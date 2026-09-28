@@ -19,7 +19,7 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request("/api/health"),
   presets: () => request("/api/presets"),
-  scenarios: () => request("/api/scenarios"),
+  scenarios: (preset) => request(`/api/scenarios?preset=${encodeURIComponent(preset || "uav_flap")}`),
   flutter: (preset) => request("/api/flutter", { method: "POST", body: JSON.stringify({ preset }) }),
   simulate: (body) => request("/api/simulate", { method: "POST", body: JSON.stringify(body) }),
 };

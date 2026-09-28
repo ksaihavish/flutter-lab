@@ -5,6 +5,8 @@ Command-line interface.
     python -m flutter_ai train     [--preset uav_flap]      train the neural policy (needs PyTorch)
     python -m flutter_ai evaluate  [--preset uav_flap]      benchmark -> outputs/<preset>/results.json + figures
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
+    python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
+    python -m flutter_ai check-data <folder>                validate an experimental dataset
     python -m flutter_ai all                                analyze + train (if missing) + evaluate
 """
 
@@ -83,6 +85,12 @@ def _serve(args) -> None:
     uvicorn.run("flutter_ai.api.app:app", host=args.host, port=args.port, reload=args.reload, log_level="warning")
 
 
+def _validate(args) -> None:
+    from .validation import validate_bact
+
+    validate_bact()
+
+
 def _check_data(args) -> None:
     from .data import check_dataset
 
@@ -123,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--port", type=int, default=8000)
     sp.add_argument("--reload", action="store_true", help="auto-reload on code changes (development)")
     sp.add_argument("--no-browser", action="store_true")
+    sp = sub.add_parser("validate", help="compare the model with NASA BACT wind-tunnel flutter data")
+    sp.set_defaults(fn=_validate)
     sp = sub.add_parser("check-data", help="validate an experimental dataset folder (see data/README.md)")
     sp.add_argument("folder")
     sp.set_defaults(fn=_check_data)

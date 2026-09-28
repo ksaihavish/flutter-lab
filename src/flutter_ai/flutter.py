@@ -77,8 +77,16 @@ def _first_crossing(f, velocities: np.ndarray) -> float | None:
 
 
 def default_velocities(p: WingParams, n: int = 300) -> np.ndarray:
-    u_ref = p.b * p.omega_alpha  # reference speed b * omega_alpha
-    return np.linspace(0.05 * u_ref, 6.0 * u_ref, n)
+    """
+    Sweep range in units of b*omega_alpha, widened until an instability appears. Light wings
+    flutter below ~6 b*omega_alpha; heavy wind-tunnel rigs (mass ratio ~900, e.g. BACT) near ~20.
+    """
+    u_ref = p.b * p.omega_alpha
+    for top in (6.0, 30.0, 150.0):
+        coarse = np.linspace(0.05 * u_ref, top * u_ref, 80)
+        if any(max_oscillatory_real(p, U) > 0 or max_real_nonoscillatory(p, U) > 0 for U in coarse):
+            break
+    return np.linspace(0.05 * u_ref, top * u_ref, n)
 
 
 def flutter_analysis(p: WingParams, velocities: np.ndarray | None = None) -> FlutterResult:
