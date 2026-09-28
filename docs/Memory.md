@@ -33,7 +33,7 @@ Last updated: **2026-09-28** · Version **0.3.0** · Phase: 3-DOF upgrade done; 
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9 |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
 | Dataset intake | ✅ format + `check-data` | **No real dataset yet.** User offered to supply them; spec in `data/README.md` |
-| Git/GitHub | 🔄 | Branch `v0.3-rebuild` pushed; **PR #1 open** (not merged). Local repo lives in OneDrive: move it to e.g. `C:\devlutter-ai` |
+| Git/GitHub | 🔄 | Branch `v0.3-rebuild` pushed; **PR #1 open** (not merged). Local repo lives in OneDrive: move it to e.g. `C:/dev/flutter-ai` |
 
 ## 3. Validation evidence (all automated in `tests/test_physics.py`)
 
