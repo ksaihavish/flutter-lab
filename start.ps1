@@ -19,10 +19,9 @@ $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot
 Set-Location $Root
 
-# Keep the virtual environment out of OneDrive (it is ~1 GB with PyTorch and should not sync).
+# The virtual environment lives outside the project (~1 GB with PyTorch; never synced or committed).
 if ($env:FLUTTER_AI_VENV) { $Venv = $env:FLUTTER_AI_VENV }
-elseif ($Root -match "OneDrive") { $Venv = Join-Path $env:LOCALAPPDATA "flutter-ai\venv" }
-else { $Venv = Join-Path $Root ".venv" }
+else { $Venv = Join-Path $env:LOCALAPPDATA "flutter-ai\venv" }
 $Py = Join-Path $Venv "Scripts\python.exe"
 
 function Find-Python {

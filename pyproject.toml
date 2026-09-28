@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 train = ["torch>=2.2"]
 llm = ["anthropic>=0.60"]
-dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5", "pre-commit>=3"]
 all = ["flutter-ai[train,llm,dev]"]
 
 [project.scripts]
@@ -36,3 +36,10 @@ addopts = "-q"
 [tool.ruff]
 line-length = 120
 src = ["src"]
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+# E501: long lines are allowed up to formatter judgement; B905: zip(strict=) is noise here;
+# B008: immutable NumPy defaults in experiment helpers are intentional.
+ignore = ["E501", "B905", "B008"]

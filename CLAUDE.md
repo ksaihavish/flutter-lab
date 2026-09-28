@@ -17,8 +17,9 @@ python -m flutter_ai train    --preset uav_flap     # retrain neural policy (nee
 python -m flutter_ai check-data data/<folder>       # validate a dataset, predicted vs measured flutter
 python -m flutter_ai serve                          # web app at http://127.0.0.1:8000 (API docs at /docs)
 ```
-On Windows the virtual environment lives in `%LOCALAPPDATA%\flutter-ai\venv` (kept out of OneDrive);
-`start.bat` / `start.ps1` create and use it.
+Project location: `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29).
+On Windows the virtual environment lives in `%LOCALAPPDATA%\flutter-ai\venv`; `start.bat` / `start.ps1` create and use it.
+`pre-commit` hooks (ruff + hygiene) run on commit; CI (`.github/workflows/ci.yml`) must be green before merging.
 
 ## Hard rules (short version)
 - Never hand-type results; they come from `outputs/<preset>/results.json`.

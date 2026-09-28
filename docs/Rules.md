@@ -77,7 +77,8 @@ in `pyproject.toml` (`train`, `llm`, `dev`) so the base install stays small.
 
 ## 6. Testing
 
-- `python -m pytest` must pass before any commit (about 10 s).
+- `python -m pytest` must pass before any commit (~70 s). `pre-commit` hooks must pass, and CI must be
+  green before merging a PR.
 - Every bug fix gets a regression test (see `test_supervisor_decisions_change_the_control`
   and `test_neural_policy_is_quiet_at_rest_and_does_not_chatter`).
 - After retraining a policy, run `pytest` **and** `python -m flutter_ai evaluate --preset <p>`, then
