@@ -20,6 +20,9 @@ complete example; it is synthetic and labelled as such.
 
 ---
 
+> **Status:** the NASA BACT report below has been turned into the `bact` preset. Run
+> `python -m flutter_ai validate` to compare against the measured flutter point.
+
 ## Start here: free sources verified on 2026-09-29
 
 | What | Why it fits | Link |

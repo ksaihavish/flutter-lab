@@ -57,6 +57,7 @@ class TrainConfig:
     lr_finetune: float = 5e-4
     turbulence_rms_max: float = 2.0  # [m/s]
     rate_weight: float = 1.0  # penalty on (du / u_max)^2 per step (actuator bandwidth)
+    ic_scale: float = 1.0  # scales the random initial conditions of fine-tuning episodes
     seed: int = 0
 
     @classmethod
@@ -66,6 +67,9 @@ class TrainConfig:
         less authority than the idealised force actuators; on the default distribution ~20 % of
         episodes were unrecoverable even for LQR, which wastes the gradient.
         """
+        if p.name == "bact":  # NASA demonstrated suppression to ~1.16 U_F; weak 30 %-span flap, quiet tunnel
+            return cls(velocity_ratio_range=(0.8, 1.2), n_velocities=9, turbulence_rms_max=0.5, ic_scale=0.3,
+                       finetune_iters=800)
         if p.actuation == "flap_servo":
             return cls(velocity_ratio_range=(0.8, 1.3), n_velocities=11, turbulence_rms_max=1.5, finetune_iters=800)
         return cls()
@@ -186,7 +190,7 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     def sample_episodes(B, horizon, gen, delay=None):
         """Initial conditions within +/-1.5 reference scales (recoverable with saturated actuators)."""
         x0 = np.zeros((B, nx))
-        x0[:, :2 * n] = gen.uniform(-1, 1, (B, 2 * n)) * ref * x0_mult
+        x0[:, :2 * n] = gen.uniform(-1, 1, (B, 2 * n)) * ref * x0_mult * cfg.ic_scale
         rms = gen.uniform(0, cfg.turbulence_rms_max, B)
         noise = gen.standard_normal((horizon, B)) * rms * np.sqrt(1 - phi**2)
         d = np.full(B, delay) if delay is not None else gen.integers(cfg.delay_range[0], d_max + 1, B)

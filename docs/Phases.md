@@ -37,6 +37,7 @@ policy, a delay-robustness sweep, dataset format + `check-data`.
 
 | # | Task | Done when |
 |---|------|-----------|
+| 4.0a | ✅ **BACT preset** from NASA/TP-1998-206270 + `validate` command: flutter frequency −0.2 %, flutter q +24 % vs wind tunnel | `outputs/validation/bact.json` |
 | 4.0 | **Real data.** Collect one ★★★ dataset (`data/README.md`) → `check-data` → report the model error; then physics-informed parameter identification from time histories (the legitimate PINN contribution) | Identified vs nominal parameters table; benchmark re-run on the identified preset |
 | 4.1 | **Run the Claude supervisor experiments.** Set `ANTHROPIC_API_KEY`, add `("neural","llm")` and `("lqr","llm")` to a separate LLM benchmark (it costs money; keep it out of the default `evaluate`), use 5+ seeds, and record latency, fallback rate and API cost | LLM points are on the trade-off figure; latency histogram; cost per run |
 | 4.2 | **Stronger baselines.** LQG with a Dryden turbulence model (so LQR also "knows" the turbulence), gain-scheduled LQR, and optionally H∞ (`python-control` / `slycot`) | The neural advantage is re-measured against fair baselines |

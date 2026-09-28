@@ -1,6 +1,6 @@
 # Flutter Lab
 
-[![CI](https://github.com/ksaihavish/Hybrid-PINN-LLM-Framework-for-Supercritical-Aeroelastic-Flutter-Control/actions/workflows/ci.yml/badge.svg)](https://github.com/ksaihavish/Hybrid-PINN-LLM-Framework-for-Supercritical-Aeroelastic-Flutter-Control/actions/workflows/ci.yml)
+[![CI](https://github.com/ksaihavish/flutter-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/ksaihavish/flutter-lab/actions/workflows/ci.yml)
 
 **Active flutter suppression on a wing section (plunge, pitch and trailing-edge flap).
 A validated physics model, a physics-trained neural controller, and an LLM (Claude)
@@ -37,9 +37,11 @@ python -m flutter_ai serve
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark → `outputs/uav_flap/results.json` + 9 publication figures (~20 s) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU) |
+| `python -m flutter_ai validate` | Compare the model with NASA's BACT wind-tunnel flutter measurements → `outputs/validation/bact.json` |
 | `python -m flutter_ai check-data data/<folder>` | Validate an experimental dataset and compare predicted vs measured flutter speed ([data/README.md](data/README.md)) |
 
-Presets: `uav_flap` (3-DOF, default), `uav_section` (2-DOF), `hodges_pierce` (textbook validation case).
+Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, from published data), `uav_section` (2-DOF),
+`hodges_pierce` (textbook validation case).
 
 ## How it works
 
@@ -61,6 +63,23 @@ Presets: `uav_flap` (3-DOF, default), `uav_section` (2-DOF), `hodges_pierce` (te
   4.86 ± 0.28 vs 6.22 ± 0.34 mm), and it uses less actuator effort.
 - Both tolerate the same loop delay (up to 15 ms).
 - The rule-based supervisor does **not** yet improve on a well-chosen fixed setting.
+
+## Validated against NASA wind-tunnel data
+
+The `bact` preset is built from NASA's published measurements of the **Benchmark Active Controls Technology**
+wind-tunnel model (a rigid wing on a pitch-and-plunge mount with a trailing-edge flap; NASA/TP-1998-206270).
+`python -m flutter_ai validate` compares the prediction with the measured flutter point:
+
+| | Flutter dynamic pressure | Flutter frequency |
+|---|---|---|
+| **Measured in NASA's Transonic Dynamics Tunnel** (Mach 0.77) | ≈ 148 psf | ≈ 4 Hz |
+| NASA's own model (measured + CFD aerodynamic derivatives) | 150.8 psf | 4.16 Hz |
+| **This model** (modified strip theory with measured lift/moment slopes) | 183 psf (+24 %) | 3.99 Hz (−0.2 %) |
+| This model, plain 2D Theodorsen | 167 psf (+13 %) | 4.13 Hz (+3 %) |
+
+The flutter *frequency* is predicted almost exactly. The flutter *pressure* is overpredicted because the
+unsteady aerodynamics are incompressible, while the test ran at Mach 0.77. That limitation is stated
+openly and is the next modelling target.
 
 ## Development workflow
 

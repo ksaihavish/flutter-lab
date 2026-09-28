@@ -42,12 +42,16 @@ class WingParams:
     zeta_h: float = 0.01
     zeta_alpha: float = 0.01
     rho: float = 1.225  # air density [kg/m^3]
+    # ---- modified strip theory (Yates 1966); defaults = 2D thin-airfoil Theodorsen ----------
+    cl_alpha: float = 2.0 * math.pi  # section lift-curve slope [1/rad] (e.g. measured, incl. 3D/compressibility)
+    x_ac: float = -0.5  # aerodynamic centre, semichords aft of mid-chord (quarter chord = -0.5)
     # ---- optional trailing-edge flap (3rd DOF) ------------------------------
     flap_hinge: float | None = None  # c; None = no flap DOF (2-DOF section)
     x_beta: float = 0.0  # flap static unbalance about hinge, semichords
     r_beta_sq: float = 0.0  # (flap radius of gyration about hinge / b)^2
     f_beta: float = 0.0  # uncoupled flap (servo) frequency [Hz]
     zeta_beta: float = 0.0
+    flap_span_fraction: float = 1.0  # fraction of the span the flap covers (1 = full span)
     # ---- actuation and limits ---------------------------------------------
     actuation: str = "force_moment"  # "force_moment" | "flap_servo"
     u_max: tuple[float, ...] = field(default=(60.0, 6.0))  # per input, SI
@@ -179,8 +183,70 @@ class WingParams:
         """Stable string identifying the physics (used to match trained policies to parameters)."""
         d = asdict(self)
         d.pop("description", None)
+        for key, default in _OPTIONAL_DEFAULTS.items():  # omitted at default: keeps older fingerprints valid
+            if d.get(key) == default:
+                d.pop(key)
         return json.dumps(d, sort_keys=True)
 
+
+_OPTIONAL_DEFAULTS = {"cl_alpha": 2.0 * math.pi, "x_ac": -0.5, "flap_span_fraction": 1.0}
+
+# Unit conversions (exact)
+SLUG, FT, LBF, INCH = 14.59390294, 0.3048, 4.4482216153, 0.0254
+PSF = LBF / FT**2  # Pa per lb/ft^2
+
+
+def _bact_preset() -> WingParams:
+    """
+    NASA Benchmark Active Controls Technology (BACT) wind-tunnel model on the Pitch And Plunge
+    Apparatus: rigid NACA 0012 wing, 16 in chord x 32 in span, 25 %-chord / 30 %-span trailing-edge
+    control surface. Sources: Waszak, NASA/TP-1998-206270 (Tables 1-3); Mukhopadhyay (1999).
+
+    The wing is rigid on springs, so total properties are divided by the span to get the per-unit-span
+    values the strip model uses. Aerodynamics: modified strip theory with the MEASURED lift-curve slope
+    and moment slope at Mach 0.77 (Table 2). Density: the test medium (R-12 heavy gas) at the measured
+    flutter point, q = 148 psf, assuming U = 400 ft/s (the report's reference speed "close to test
+    conditions"). Estimated (not in the report): flap inertia about its hinge; structural limits.
+    """
+    span, chord = 32 * INCH, 16 * INCH
+    b = chord / 2
+    m = 6.08 * SLUG / span  # Table 1: total mass 6.08 slug
+    I_theta = 2.80 * SLUG * FT**2 / span  # Table 1: pitch inertia about the shear centre (mid-chord)
+    S_theta = 0.0142 * SLUG * FT / span  # Table 1: pitch-plunge inertial coupling
+    S_delta = 0.00288 * SLUG * FT / span  # Table 1: plunge-TE coupling = flap mass x arm
+    flap_chord = 0.25 * chord
+    m_flap = 0.00288 * SLUG * FT / (flap_chord / 2)  # estimate: flap CG at half its chord
+    I_delta = m_flap * flap_chord**2 / 3 / span  # estimate: thin plate about its hinge
+    cl_alpha, cm_alpha = 4.584, 1.490  # Table 2 (Mach 0.77); moments about mid-chord
+    rho = 2 * 148 * PSF / (400 * FT) ** 2
+    return WingParams(
+        name="bact",
+        description="NASA BACT wind-tunnel model (pitch-and-plunge apparatus, 25% chord TE flap over 30% span, "
+        "26 Hz hydraulic actuator, +/-12 deg). Parameters from NASA/TP-1998-206270; measured flutter "
+        "~148 psf at ~4 Hz (Mach 0.77, R-12 heavy gas). Modified strip theory with measured lift/moment slopes.",
+        b=b,
+        a=0.0,  # shear centre and CG at mid-chord
+        mass=m,
+        x_alpha=S_theta / (m * b),
+        r_alpha_sq=I_theta / (m * b * b),
+        f_h=21.01 / (2 * math.pi),  # Table 1: in-vacuo plunge 21.01 rad/s
+        f_alpha=32.72 / (2 * math.pi),  # Table 1: in-vacuo pitch 32.72 rad/s
+        zeta_h=0.0014,
+        zeta_alpha=0.0010,
+        rho=rho,
+        cl_alpha=cl_alpha,
+        x_ac=0.0 - 2 * cm_alpha / cl_alpha,  # from CM_alpha = CL_alpha (a - x_ac) / 2  ->  AC at 17.5 % chord
+        flap_hinge=0.5,  # 25 % chord flap -> hinge at 75 % chord
+        x_beta=S_delta / (m * b),
+        r_beta_sq=I_delta / (m * b * b),
+        f_beta=165.3 / (2 * math.pi),  # Table 3: TE actuator 165.3 rad/s ...
+        zeta_beta=0.56,  # ... damping 0.56
+        flap_span_fraction=0.30,
+        actuation="flap_servo",
+        u_max=(math.radians(12.0),),  # TE position limit ~12 deg
+        h_limit=0.05,  # assumed PAPA travel
+        alpha_limit_deg=10.0,  # assumed
+    )
 
 _UAV = dict(b=0.15, a=-0.3, mass=5.0, x_alpha=0.2, r_alpha_sq=0.25, f_h=8.0, f_alpha=16.0,
             zeta_h=0.01, zeta_alpha=0.01)
@@ -205,6 +271,7 @@ PRESETS: dict[str, WingParams] = {
         "(the v0.2 research case).",
         **_UAV,
     ),
+    "bact": _bact_preset(),
     "hodges_pierce": WingParams(
         name="hodges_pierce",
         description=(
