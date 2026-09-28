@@ -12,6 +12,8 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 - **What it is:** a flutter-suppression research platform. It has a validated typical-section
   model (2-DOF, or 3-DOF with a trailing-edge flap), LQR, a physics-trained neural policy, a
   rule-based or Claude supervisor, a benchmark runner, and a web simulator.
+- **Repo:** https://github.com/ksaihavish/flutter-lab (renamed 2026-09-29 from Hybrid-PINN-LLM-...; old URL redirects).
+- **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
 - **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo, ±15° command,
   1-step (5 ms) loop delay.
 - **Run:** `start.bat` (web app) · `python -m pytest` (65 tests, ~70 s) ·
@@ -34,7 +36,8 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 | Claude supervisor | ✅ code + tests (mocked) | **Never run against the real API yet.** Needs `ANTHROPIC_API_KEY` |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9 |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
-| Dataset intake | ✅ format + `check-data` | **No real dataset yet.** User offered to supply them; spec in `data/README.md` |
+| Dataset intake | ✅ format + `check-data` | No time-history dataset yet; spec in `data/README.md` |
+| BACT preset + validation | ✅ 2026-09-29 | Flutter freq 3.99 Hz vs ~4 Hz measured (−0.2 %); flutter q 183 vs ~148 psf (+24 %); NASA's model 150.8 psf. Neural policy `neural_policy_bact.npz` trained |
 | Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker |
 | Automation | ✅ | GitHub Actions CI (lint, tests Linux+Windows, benchmark artifact, Docker build), pre-commit, Dependabot |
 
@@ -70,6 +73,10 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 
 The 2-DOF `uav_section` results show the same pattern (neural better than LQR; supervisor neutral).
 
+**bact (NASA wind-tunnel rig), disturbances ×0.25** (from `outputs/bact/results.json`, 2026-09-29): turbulence RMS h
+neural 0.67 ± 0.18 vs LQR 0.86 ± 0.22 mm, but neural uses more effort (0.71 vs 0.48): a different trade-off point,
+not Pareto-dominant as on `uav_flap`. At 1.3 U_F: 0.38 vs 0.75 mm. Both survive 0–30 ms delay. Supervisor neutral.
+
 ## 5. Decisions log (why things are the way they are)
 
 | Date | Decision | Why |
@@ -88,6 +95,11 @@ The 2-DOF `uav_section` results show the same pattern (neural better than LQR; s
 | 2026-09-29 | Project moved to `C:\Users\lio48\dev\flutter-lab`; venv always in `%LOCALAPPDATA%` | OneDrive syncing conflicts with git and 1 GB venvs |
 | 2026-09-29 | CI: ruff + pytest (Linux py3.11/3.13, Windows py3.13) + benchmark artifact + Docker health check; pre-commit; Dependabot | Every change is verified automatically |
 | 2026-09-29 | Docker image serves only (no PyTorch); `FLUTTER_AI_HOME=/app` | Small image; training stays local |
+| 2026-09-29 | Modified strip theory params (`cl_alpha`, `x_ac`, `flap_span_fraction`); defaults = Theodorsen | Needed to model a real finite wing (BACT, aspect ratio 2) from measured data |
+| 2026-09-29 | BACT aerodynamic centre from Table 2 CM_alpha (17.5 % chord), not the text's "~30 %" | 30 % gives 283 psf (+91 %); Table 2 is what NASA's validated model used |
+| 2026-09-29 | BACT scenarios: disturbances ×0.25; training range 0.8–1.2 U_F, turbulence ≤ 0.5 m/s | Weak 30 %-span flap; NASA demonstrated suppression to ~1.16 U_F; LQR fails only from the standard 2°/10 mm start |
+| 2026-09-29 | Flutter sweep range adapts (6 → 30 → 150 b·ω_α) | BACT (mass ratio ~880) flutters at ~20 b·ω_α |
+| 2026-09-29 | Repo renamed to `flutter-lab` | The method is no longer a PINN; name matches the project |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
@@ -102,8 +114,9 @@ The 2-DOF `uav_section` results show the same pattern (neural better than LQR; s
 
 ## 7. Next steps (in order)
 
-1. **Build a `bact` preset from NASA TP-1998-206270** (BACT on the pitch-and-plunge apparatus with a TE flap; free PDF,
-   links in `data/README.md`) → compare our predicted flutter boundary with the published one.
+1. **Improve BACT accuracy:** add a compressibility correction (Prandtl–Glauert on unsteady terms, or NASA's
+   derivative-based aero with CL_alpha_dot, CL_q, CM_q from Table 2) → target < 5 % on flutter q, like NASA's model.
+   Also add the air, Mach 0.38 flutter point (158 psf, Mukhopadhyay 1999) as a second validation case.
 2. **Get time-history data** (ask the authors / a university wind tunnel) → `check-data` → parameter identification.
 3. Phase 4.1: run the **Claude supervisor** benchmark (needs an API key and a budget).
 4. Phase 4.2: add the **LQG + turbulence model** baseline; re-tune LQR weights.

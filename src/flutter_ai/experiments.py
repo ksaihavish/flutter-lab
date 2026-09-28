@@ -20,7 +20,7 @@ from .controllers import LQRController, NeuralController, OpenLoop, policy_path
 from .flutter import flutter_analysis, pk_flutter_speed
 from .params import WingParams
 from .paths import OUTPUTS_DIR
-from .scenarios import SCENARIOS
+from .scenarios import SCENARIOS, scenarios_for
 from .simulation import Scenario, SimResult, simulate
 from .supervisor import LLMSupervisor, RuleSupervisor
 
@@ -161,8 +161,9 @@ def run_benchmark(p: WingParams, seeds=(0, 1, 2, 3, 4), out_dir: Path | None = N
         results["metadata"]["neural_policy"] = {k: meta[k] for k in ("trained_at", "validation", "lqr_validation",
                                                                     "delay_range", "velocity_ratio_range")}
 
+    scenarios = scenarios_for(p.name)
     examples: dict[str, list[SimResult]] = {}
-    for name, spec in SCENARIOS.items():
+    for name, spec in scenarios.items():
         base: Scenario = spec["scenario"]
         log(f"\nScenario '{name}': {spec['description']}")
         stochastic = base.gust.kind == "turbulence" or base.sensor_noise > 0  # only these need several seeds
@@ -185,14 +186,14 @@ def run_benchmark(p: WingParams, seeds=(0, 1, 2, 3, 4), out_dir: Path | None = N
         results["scenarios"][name] = {"description": spec["description"], "scenario": base.to_dict(), "cases": table}
 
     log("\nEffort/response trade-off sweeps (turbulence_patch)...")
-    tb = SCENARIOS["turbulence_patch"]["scenario"]
+    tb = scenarios["turbulence_patch"]["scenario"]
     feedback = [c for c in ("lqr", "neural") if c in controllers]
     results["tradeoff"] = {c: tradeoff_sweep(p, Uf, tb, c) for c in feedback}
     results["tradeoff"]["supervised"] = {f"{c}+rules": run_case(p, Uf, tb, c, "rules").metrics for c in feedback}
     log("Velocity sweep...")
-    results["velocity_sweep"] = velocity_sweep(p, Uf, controllers)
+    results["velocity_sweep"] = velocity_sweep(p, Uf, controllers, base=scenarios["discrete_gust"]["scenario"])
     log("Delay-robustness sweep...")
-    results["delay_sweep"] = delay_sweep(p, Uf, feedback)
+    results["delay_sweep"] = delay_sweep(p, Uf, feedback, base=scenarios["discrete_gust"]["scenario"])
     for c in [k for k in results["delay_sweep"] if k not in ("delays", "dt")]:
         ok = [r["delay_steps"] for r in results["delay_sweep"][c] if not r["exceeded_limits"]]
         log(f"  {c:12s} survives delays (steps of 5 ms): {ok}")

@@ -92,10 +92,17 @@ def structural_matrices(p: WingParams) -> tuple[np.ndarray, np.ndarray, np.ndarr
 
 
 def aero_force_vector(p: WingParams, U: float) -> np.ndarray:
-    """e: maps the circulatory effective downwash w_eff to generalised forces on the LHS."""
-    e = [2.0 * np.pi * p.rho * U * p.b, -2.0 * np.pi * p.rho * U * p.b**2 * (p.a + 0.5)]
+    """
+    e: maps the circulatory effective downwash w_eff to generalised forces on the LHS.
+
+    Modified strip theory (Yates 1966): the circulatory lift uses the section lift-curve
+    slope `cl_alpha` (thin airfoil: 2 pi) acting at the aerodynamic centre `x_ac`
+    (thin airfoil: quarter chord, x_ac = -1/2). Defaults reproduce Theodorsen exactly.
+    """
+    kappa = p.cl_alpha / (2.0 * np.pi)
+    e = [kappa * 2.0 * np.pi * p.rho * U * p.b, -kappa * 2.0 * np.pi * p.rho * U * p.b**2 * (p.a - p.x_ac)]
     if p.n_dof == 3:
-        e.append(p.rho * U * p.b**2 * _T(p)[12])
+        e.append(kappa * p.flap_span_fraction * p.rho * U * p.b**2 * _T(p)[12])
     return np.array(e)
 
 
@@ -103,10 +110,10 @@ def downwash_rows(p: WingParams, U: float) -> tuple[np.ndarray, np.ndarray]:
     """Q = dw_dq . q + dw_dqdot . q'   (+ w_gust)."""
     dw_dq = [0.0, U]
     dw_dqdot = [1.0, p.b * (0.5 - p.a)]
-    if p.n_dof == 3:
-        T = _T(p)
-        dw_dq.append(U * T[10] / np.pi)
-        dw_dqdot.append(p.b * T[11] / (2.0 * np.pi))
+    if p.n_dof == 3:  # a partial-span flap contributes in proportion to the span it covers
+        T, f = _T(p), p.flap_span_fraction
+        dw_dq.append(f * U * T[10] / np.pi)
+        dw_dqdot.append(f * p.b * T[11] / (2.0 * np.pi))
     return np.array(dw_dq), np.array(dw_dqdot)
 
 
@@ -136,6 +143,14 @@ def noncirculatory_matrices(p: WingParams, U: float) -> tuple[np.ndarray, np.nda
         [0.0, 0.0, T[4] + T[10]],
         [0.0, 0.0, (T[5] - T[4] * T[10]) / np.pi],
     ])
+    # Partial-span flap: flap rows/columns act over a fraction f of the span (the flap's own
+    # beta-beta terms scale by f, not f^2). f = 1 leaves the 2D Theodorsen terms unchanged.
+    # Note: the circulatory beta-beta hinge-moment term (via e x downwash) scales by f^2; exact
+    # treatment needs separate lag states for flapped strips - negligible for an actuator-driven flap.
+    f = p.flap_span_fraction
+    if f != 1.0:
+        scale = np.array([[1.0, 1.0, f], [1.0, 1.0, f], [f, f, f]])
+        Ma, Cnc, Knc = Ma * scale, Cnc * scale, Knc * scale
     return Ma, Cnc, Knc
 
 

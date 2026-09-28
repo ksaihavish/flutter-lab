@@ -19,7 +19,7 @@ from ..flutter import flutter_analysis, pk_flutter_speed
 from ..gusts import GustSpec
 from ..params import PRESETS, WingParams, get_preset
 from ..paths import FRONTEND_DIR
-from ..scenarios import SCENARIOS
+from ..scenarios import scenarios_for
 from ..simulation import Scenario
 from ..supervisor import MODES, llm_status
 from .schemas import FlutterIn, ParamOverrides, SimulateIn
@@ -68,8 +68,9 @@ def presets():
 
 
 @app.get("/api/scenarios")
-def scenarios():
-    return {name: {"description": s["description"], **s["scenario"].to_dict()} for name, s in SCENARIOS.items()}
+def scenarios(preset: str = "uav_flap"):
+    return {name: {"description": s["description"], **s["scenario"].to_dict()}
+            for name, s in scenarios_for(preset).items()}
 
 
 @app.get("/api/modes")
