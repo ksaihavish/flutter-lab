@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+
+# Generated outputs (regenerate with: python -m flutter_ai evaluate)
+outputs/
+
+# Large legacy binaries
+legacy/models/
+legacy/outputs/training_data.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
