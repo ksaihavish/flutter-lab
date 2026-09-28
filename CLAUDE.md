@@ -14,6 +14,7 @@ python -m pytest                                    # 65 tests (~70 s), must pas
 python -m flutter_ai analyze  --preset uav_flap     # flutter speed + p-k validation + V-g figure
 python -m flutter_ai evaluate --preset uav_flap     # benchmark -> outputs/uav_flap/results.json + figures
 python -m flutter_ai train    --preset uav_flap     # retrain neural policy (needs torch, ~5 min)
+python -m flutter_ai validate                       # BACT wind-tunnel comparison -> outputs/validation/bact.json
 python -m flutter_ai check-data data/<folder>       # validate a dataset, predicted vs measured flutter
 python -m flutter_ai serve                          # web app at http://127.0.0.1:8000 (API docs at /docs)
 ```

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .gusts import GustSpec
 from .simulation import Scenario
 
@@ -42,6 +44,26 @@ SCENARIOS: dict[str, dict] = {
 }
 
 DEFAULT_SCENARIO = "turbulence_patch"
+
+# Disturbance size relative to the standard scenarios (initial condition and gust amplitude).
+# BACT: a heavy wind-tunnel rig in a low-turbulence tunnel with a small flap (30 % span, +/-12 deg);
+# its linear LQR is stable to ~1.16 U_F, but the standard 2 deg / 10 mm start exceeds the flap's authority.
+DISTURBANCE_SCALE: dict[str, float] = {"bact": 0.25}
+
+
+def scenarios_for(preset: str) -> dict[str, dict]:
+    """The benchmark scenarios with disturbances scaled for the given preset."""
+    s = DISTURBANCE_SCALE.get(preset, 1.0)
+    if s == 1.0:
+        return SCENARIOS
+    out = {}
+    for name, spec in SCENARIOS.items():
+        sc = spec["scenario"]
+        scaled = replace(sc, h0=sc.h0 * s, alpha0_deg=sc.alpha0_deg * s,
+                         gust=replace(sc.gust, amplitude=sc.gust.amplitude * s))
+        out[name] = {"description": spec["description"] + f" (Disturbances scaled x{s} for this rig.)",
+                     "scenario": scaled}
+    return out
 
 
 def get_scenario(name: str = DEFAULT_SCENARIO) -> Scenario:

@@ -434,6 +434,8 @@ function bindEvents() {
   $("preset").addEventListener("change", async () => {
     renderStatus();
     renderCaseOptions();
+    state.scenarios = await api.scenarios($("preset").value);  // disturbances are scaled per rig
+    applyScenario(state.scenarioName);
     await loadFlutter();
     run();
   });
@@ -487,7 +489,7 @@ async function boot() {
   bindEvents();
   requestAnimationFrame(frame);
   try {
-    [state.health, state.presets, state.scenarios] = await Promise.all([api.health(), api.presets(), api.scenarios()]);
+    [state.health, state.presets, state.scenarios] = await Promise.all([api.health(), api.presets(), api.scenarios("uav_flap")]);
   } catch (err) {
     showBanner(`Could not reach the Flutter Lab server (${err.message}). Start it with: python -m flutter_ai serve`);
     return;

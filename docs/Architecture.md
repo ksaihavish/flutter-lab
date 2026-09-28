@@ -50,6 +50,12 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
     `Q = ḣ + Uα + b(½−a)α̇ + (U/π)T10 β + (b/2π)T11 β̇`, filtered by the Wagner function
     (Jones two-lag approximation) → 2 lag states;
   - gusts enter the downwash. Simplification: the Wagner lag is used, not Küssner.
+- **Modified strip theory** (Yates 1966) for real, finite wings: the circulatory lift can use a measured
+  section lift-curve slope `cl_alpha` acting at a measured aerodynamic centre `x_ac`, and a flap may cover
+  only a fraction `flap_span_fraction` of the span. The defaults (2π, quarter chord, 1.0) are exactly Theodorsen.
+- **Wind-tunnel validation** (`validation.py`, `python -m flutter_ai validate`): the `bact` preset (NASA
+  BACT rig, from NASA/TP-1998-206270) predicts the measured flutter frequency within 0.2 % and the flutter
+  dynamic pressure 24 % high (incompressible model at Mach 0.77).
 
 **Validation** (`tests/test_physics.py`):
 - Theodorsen C(k) against tabulated values.
@@ -63,7 +69,8 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 
 | Module | Responsibility |
 |--------|----------------|
-| `params.py` | `WingParams` (frozen dataclass, SI): geometry, inertia, frequencies, damping, optional flap, actuation, limits; presets `uav_flap` (default, 3-DOF), `uav_section` (2-DOF), `hodges_pierce` (validation) |
+| `params.py` | `WingParams` (frozen dataclass, SI): geometry, inertia, frequencies, damping, optional flap, modified-strip-theory corrections, actuation, limits; presets `uav_flap` (default), `bact` (NASA wind-tunnel rig), `uav_section` (2-DOF), `hodges_pierce` (textbook) |
+| `validation.py` | Comparison with published wind-tunnel data (BACT) → `outputs/validation/bact.json` |
 | `aero.py` | Exact Theodorsen C(k), Jones approximation, flap coefficients T1…T14 |
 | `model.py` | Generic N-DOF assembly (A, B, G), exact ZOH discretisation (cached), energy, state names |
 | `flutter.py` | V-g/V-f sweep with continuous mode tracking, flutter and divergence speeds, independent p-k validation |
@@ -75,7 +82,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (Claude) |
 | `simulation.py` | Closed-loop runner (`Scenario` → `SimResult`): delay queue, saturation, failure detection, supervisor scheduling |
 | `metrics.py` | Peak/RMS h, α, β; settling; gust recovery; effort; command rate; saturation; mode switches |
-| `scenarios.py` | Named benchmark scenarios |
+| `scenarios.py` | Named benchmark scenarios; `scenarios_for(preset)` scales disturbances per rig (BACT ×0.25) |
 | `training.py` | PyTorch: imitation of the delay-aware LQR → differentiable-physics fine-tuning with delay/speed/turbulence randomisation → best checkpoint |
 | `experiments.py` | Benchmark: scenarios × cases × seeds; trade-off, velocity and delay sweeps → `outputs/<preset>/results.json` |
 | `plots.py` | Publication figures (same entity colours as the app) |

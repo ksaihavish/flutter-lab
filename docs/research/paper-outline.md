@@ -50,6 +50,8 @@ Pareto front ⟨results.json⟩; LLM latency and fallback ⟨LLM benchmark⟩) �
 - 3-DOF typical section with a servo-driven trailing-edge flap: EOM and Theodorsen flap
   aerodynamics (Architecture.md §2); state space; ZOH discretisation; 5 ms loop delay.
 - Parameters: table from `results.json → params`.
+- **Experimental validation: NASA BACT wind-tunnel model** ⟨outputs/validation/bact.json⟩: predicted vs measured
+  flutter frequency and dynamic pressure; discuss the compressibility gap (Mach 0.77) and the aerodynamic-centre sensitivity.
 - Validation: Hodges & Pierce benchmark; flap loads vs thin-airfoil theory; state-space vs p-k flutter speed
   ⟨results.json: flutter.state_space, flutter.pk_exact_theodorsen⟩. Figure 1 =
   `fig1_flutter_vg.png`.
