@@ -88,6 +88,9 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 ```
 .
 ├── start.bat / start.ps1 / start.sh   one-click setup and launch
+├── Dockerfile, docker-compose.yml     container for the web app (serving only, no PyTorch)
+├── .github/                           CI workflow (lint, tests Linux+Windows, benchmark, Docker) + Dependabot
+├── .pre-commit-config.yaml            ruff + hygiene hooks run before each commit
 ├── pyproject.toml                     package, dependencies, extras (train, llm, dev)
 ├── CLAUDE.md                          entry point for AI assistants
 ├── .env.example                       ANTHROPIC_API_KEY etc. (copy to .env; git-ignored)
@@ -115,6 +118,8 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
 | Tests | pytest + FastAPI TestClient | 65 tests |
+| Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
+| Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 
 ## 6. Request flow: `POST /api/simulate`
 

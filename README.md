@@ -1,5 +1,7 @@
 # Flutter Lab
 
+[![CI](https://github.com/ksaihavish/Hybrid-PINN-LLM-Framework-for-Supercritical-Aeroelastic-Flutter-Control/actions/workflows/ci.yml/badge.svg)](https://github.com/ksaihavish/Hybrid-PINN-LLM-Framework-for-Supercritical-Aeroelastic-Flutter-Control/actions/workflows/ci.yml)
+
 **Active flutter suppression on a wing section (plunge, pitch and trailing-edge flap).
 A validated physics model, a physics-trained neural controller, and an LLM (Claude)
 supervisor, with an interactive web simulator.**
@@ -20,6 +22,8 @@ python -m venv .venv && .venv/Scripts/activate    # macOS/Linux: source .venv/bi
 pip install -e ".[llm,dev]"          # add ,train to retrain neural policies (installs PyTorch)
 python -m flutter_ai serve
 ```
+
+**Docker:** `docker compose up --build`, then open <http://127.0.0.1:8000>.
 
 **Optional: the Claude supervisor.** Copy `.env.example` to `.env`, set
 `ANTHROPIC_API_KEY`, and restart.
@@ -57,6 +61,13 @@ Presets: `uav_flap` (3-DOF, default), `uav_section` (2-DOF), `hodges_pierce` (te
   4.86 ± 0.28 vs 6.22 ± 0.34 mm), and it uses less actuator effort.
 - Both tolerate the same loop delay (up to 15 ms).
 - The rule-based supervisor does **not** yet improve on a well-chosen fixed setting.
+
+## Development workflow
+
+- `pip install -e ".[llm,dev]"`, then `pre-commit install`: lint and hygiene hooks run before every commit.
+- Every push and pull request runs **CI** (`.github/workflows/ci.yml`): ruff; tests on Linux and Windows;
+  a benchmark smoke run whose figures are uploaded as a downloadable artifact; and a Docker build with a health check.
+- Dependabot opens weekly dependency-update PRs.
 
 ## Documentation
 
