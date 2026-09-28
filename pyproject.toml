@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flutter-ai"
+version = "0.3.0"
+description = "Physics-based flutter simulation with LQR, neural and LLM-supervised control of a 2-DOF or 3-DOF (flapped) wing section"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+train = ["torch>=2.2"]
+llm = ["anthropic>=0.60"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
+all = ["flutter-ai[train,llm,dev]"]
+
+[project.scripts]
+flutter-ai = "flutter_ai.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+src = ["src"]

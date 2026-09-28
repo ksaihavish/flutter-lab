@@ -1,9 +1,3 @@
-torch==2.9.0
-numpy==2.3.3
-scipy==1.17.0
-matplotlib==3.10.8
-pandas==2.3.2
-openai==2.21.0
-python-dotenv==1.2.1
-sympy==1.14.0
-tqdm==4.67.3
+# Dependencies live in pyproject.toml. This installs the package with the LLM and dev extras.
+# Add ",train" (i.e. -e .[llm,dev,train]) to retrain neural policies (installs PyTorch).
+-e .[llm,dev]
