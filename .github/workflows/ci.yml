@@ -63,7 +63,7 @@ jobs:
         run: python -m flutter_ai evaluate --preset uav_flap --seeds 1
       - name: Validate the template dataset
         run: python -m flutter_ai check-data data/template_synthetic
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: benchmark-uav_flap
           path: outputs/uav_flap/
