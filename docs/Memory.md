@@ -33,7 +33,7 @@ Last updated: **2026-09-28** · Version **0.3.0** · Phase: 3-DOF upgrade done; 
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9 |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
 | Dataset intake | ✅ format + `check-data` | **No real dataset yet.** User offered to supply them; spec in `data/README.md` |
-| Git/GitHub | 🔄 | Local repo; push branch to `ksaihavish/Hybrid-PINN-LLM-Framework-...` (see §7) |
+| Git/GitHub | 🔄 | Branch `v0.3-rebuild` pushed; **PR #1 open** (not merged). Local repo lives in OneDrive: move it to e.g. `C:\devlutter-ai` |
 
 ## 3. Validation evidence (all automated in `tests/test_physics.py`)
 
@@ -96,7 +96,7 @@ The 2-DOF `uav_section` results show the same pattern (neural better than LQR; s
 
 ## 7. Next steps (in order)
 
-1. **Push to GitHub** (branch → PR → merge), and update the repo description (the current one overclaims).
+1. **Review and merge PR #1** on GitHub; update the repo description (the current one overclaims).
 2. **Get one real dataset** (see `data/README.md`, ★★★ rows) → `check-data` → model error %.
 3. Phase 4.1: run the **Claude supervisor** benchmark (needs an API key and a budget).
 4. Phase 4.2: add the **LQG + turbulence model** baseline; re-tune LQR weights.
