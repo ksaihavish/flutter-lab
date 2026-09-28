@@ -1,0 +1,11 @@
+# docker compose up --build      ->  http://127.0.0.1:8000
+services:
+  web:
+    build: .
+    image: flutter-lab
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env        # optional: ANTHROPIC_API_KEY for the Claude supervisor
+        required: false
+    restart: unless-stopped
