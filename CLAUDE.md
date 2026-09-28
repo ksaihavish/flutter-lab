@@ -6,7 +6,7 @@ Read these before changing anything:
 3. `docs/Phases.md`: what to work on next (one phase at a time).
 
 Reference: `docs/PRD.md` (what and why), `docs/Architecture.md` (how), `docs/Design.md` (visual system),
-`data/README.md` (dataset format).
+`data/README.md` (dataset format), `docs/Study-Guide.md` (the owner's learning path).
 
 ## Commands
 ```

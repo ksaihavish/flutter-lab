@@ -23,6 +23,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 - **Environment:** on Windows the venv is at `%LOCALAPPDATA%\flutter-ai\venv` (outside the project).
   Python 3.14, torch 2.14 CPU. The CLI and tests use that interpreter.
 - **Read next:** `Rules.md` (integrity rules), then `Phases.md` Phase 4.
+- **Owner's learning path:** `Study-Guide.md` (8 tracks mapped to the code, exercises, 16-week plan).
 
 ## 2. Current state of each part
 
