@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flutter Lab</title>
+  <meta name="description" content="Simulate aeroelastic flutter of a 2-DOF wing section and compare LQR, neural and LLM-supervised controllers.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 18c6-7 13-9 26-4-9 1-17 3-26 4z' fill='%232a78d6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    // Apply the saved theme before first paint (per-viewer convenience only).
+    try { const t = localStorage.getItem("flutterlab-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 18c6-7 13-9 26-4-9 1-17 3-26 4z"/></svg>
+      <div>
+        <h1>Flutter Lab</h1>
+        <p class="subtitle">Active flutter suppression on a wing section (plunge, pitch, trailing-edge flap)</p>
+      </div>
+    </div>
+    <div class="status-row" id="status-row" aria-live="polite"></div>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+  </header>
+
+  <div class="layout">
+    <aside class="controls" aria-label="Scenario settings">
+      <section class="control-group">
+        <h2>Scenario</h2>
+        <div class="scenario-buttons" id="scenario-buttons" role="group" aria-label="Scenario presets"></div>
+        <p class="hint" id="scenario-description"></p>
+      </section>
+
+      <section class="control-group">
+        <h2>Wing</h2>
+        <label class="field">
+          <span>Preset</span>
+          <select id="preset"></select>
+        </label>
+        <dl class="readouts">
+          <div><dt>Flutter speed</dt><dd id="ro-flutter">–</dd></div>
+          <div><dt>Flutter frequency</dt><dd id="ro-freq">–</dd></div>
+          <div><dt>Mass ratio μ</dt><dd id="ro-mu">–</dd></div>
+          <div><dt>Degrees of freedom</dt><dd id="ro-dof">–</dd></div>
+          <div><dt>Actuator</dt><dd id="ro-act">–</dd></div>
+        </dl>
+      </section>
+
+      <section class="control-group">
+        <h2>Flight condition</h2>
+        <label class="field">
+          <span>Airspeed <output id="out-speed"></output></span>
+          <input type="range" id="speed" min="0.5" max="1.5" step="0.01" value="1.1">
+        </label>
+        <div class="field-row">
+          <label class="field"><span>Initial plunge (mm)</span><input type="number" id="h0" value="10" step="1" min="-100" max="100"></label>
+          <label class="field"><span>Initial pitch (°)</span><input type="number" id="a0" value="2" step="0.5" min="-20" max="20"></label>
+        </div>
+        <div class="field-row">
+          <label class="field"><span>Duration (s)</span><input type="number" id="duration" value="10" step="1" min="1" max="30"></label>
+          <label class="field" title="Computation + actuation latency. 1 step = 5 ms. The neural policy was trained with 0-2 steps.">
+            <span>Loop delay (steps)</span><input type="number" id="delay" value="1" step="1" min="0" max="20">
+          </label>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2>Disturbance</h2>
+        <label class="field">
+          <span>Gust type</span>
+          <select id="gust-kind">
+            <option value="turbulence">Turbulence patch</option>
+            <option value="one_minus_cosine">1 − cosine gust</option>
+            <option value="sine">Sinusoidal gust</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Intensity <output id="out-gust"></output></span>
+          <input type="range" id="gust-amp" min="0" max="8" step="0.1" value="1.5">
+        </label>
+        <div class="field-row">
+          <label class="field"><span>Start (s)</span><input type="number" id="gust-start" value="3" step="0.5" min="0"></label>
+          <label class="field"><span>Length (s)</span><input type="number" id="gust-dur" value="4" step="0.1" min="0.05"></label>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2>Controllers</h2>
+        <div class="case-list" id="case-list"></div>
+        <label class="field">
+          <span>Supervisor interval (s)</span>
+          <input type="number" id="sup-interval" value="0.25" step="0.05" min="0.05" max="10">
+        </label>
+        <p class="hint" id="llm-hint"></p>
+      </section>
+
+      <button class="primary-btn" id="run-btn" type="button">Run simulation</button>
+    </aside>
+
+    <main class="content">
+      <div class="banner" id="banner" role="alert" hidden></div>
+
+      <section class="card viewport-card" aria-labelledby="sim-title">
+        <div class="card-head">
+          <h2 id="sim-title">Simulation</h2>
+          <div class="playback">
+            <button class="icon-btn" id="play-btn" type="button" aria-label="Play">
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-play"><path d="M8 5v14l11-7z"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+            </button>
+            <button class="icon-btn" id="restart-btn" type="button" aria-label="Restart">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            </button>
+            <label class="speed-select">
+              <span class="visually-hidden">Playback speed</span>
+              <select id="play-speed">
+                <option value="0.05">0.05×</option>
+                <option value="0.1">0.1×</option>
+                <option value="0.25" selected>0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="1">1× real time</option>
+              </select>
+            </label>
+            <span class="time-readout" id="time-readout">t = 0.00 s</span>
+          </div>
+        </div>
+        <div class="viewport-wrap"><canvas id="viewport" aria-label="Animated wing sections, one lane per controller"></canvas></div>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub simulation time">
+        <p class="hint viewport-note" id="viewport-note">Geometry is drawn to true scale (plunge and chord share one scale). Air flows left to right.</p>
+      </section>
+
+      <section class="card" aria-labelledby="results-title">
+        <div class="card-head">
+          <h2 id="results-title">Results</h2>
+          <button class="ghost-btn" id="download-btn" type="button">Download CSV</button>
+        </div>
+        <div class="table-wrap"><table class="metrics" id="metrics-table"></table></div>
+      </section>
+
+      <div class="legend" id="legend" aria-label="Legend"></div>
+
+      <div class="chart-grid">
+        <section class="card chart-card"><h3>Plunge h (mm)</h3><div class="chart" id="chart-h"></div></section>
+        <section class="card chart-card"><h3>Pitch α (°)</h3><div class="chart" id="chart-a"></div></section>
+        <section class="card chart-card"><h3 id="chart-u-title">Control command (fraction of actuator limit)</h3><div class="chart" id="chart-u"></div></section>
+        <section class="card chart-card" id="card-beta" hidden><h3>Flap angle β (°)</h3><div class="chart" id="chart-beta"></div></section>
+        <section class="card chart-card"><h3>Supervisor aggressiveness (0 = efficient, 1 = emergency)</h3><div class="chart" id="chart-agg"></div></section>
+        <section class="card chart-card"><h3>Vertical gust velocity (m/s)</h3><div class="chart" id="chart-gust"></div></section>
+        <section class="card chart-card"><h3>Flutter analysis: damping ratio vs airspeed</h3><div class="legend legend-small" id="vg-legend"></div><div class="chart" id="chart-vg"></div></section>
+      </div>
+
+      <section class="card" aria-labelledby="log-title">
+        <div class="card-head"><h2 id="log-title">Supervisor decisions</h2></div>
+        <ol class="decision-log" id="decision-log"></ol>
+      </section>
+    </main>
+  </div>
+
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
