@@ -20,6 +20,21 @@ complete example; it is synthetic and labelled as such.
 
 ---
 
+## Start here: free sources verified on 2026-09-29
+
+| What | Why it fits | Link |
+|---|---|---|
+| **NASA/TP-1998-206270**, Waszak: *Modeling the Benchmark Active Control Technology Wind-Tunnel Model* | A rigid NACA 0012 wing on a **pitch-and-plunge apparatus with a trailing-edge flap** (our 3-DOF setup). Equations of motion + numerical parameters from experiment | [PDF (NTRS)](https://ntrs.nasa.gov/api/citations/19980203955/downloads/19980203955.pdf) |
+| NASA/TM-97-206252, *BACT Simulation User Guide* | How NASA simulated the same rig; model data | [PDF (NTRS)](https://ntrs.nasa.gov/api/citations/19990004130/downloads/19990004130.pdf) |
+| NASA/TM-1998-208452, *Parameter Estimation of Actuators for BACT* | Real flap-actuator dynamics (our 30 Hz servo is an assumption) | [PDF (NTRS)](https://ntrs.nasa.gov/api/citations/19980211327/downloads/19980211327.pdf) |
+| Mukhopadhyay (1999), *Transonic Flutter Suppression Control Law Design, Analysis and Wind Tunnel Results* | Measured flutter-suppression results on BACT: a benchmark for our controllers | [PDF (NTRS)](https://ntrs.nasa.gov/api/citations/19990050943/downloads/19990050943.pdf) |
+| *Active Control of Wind-Tunnel Model Aeroelastic Response Using Neural Networks* (NASA) | **Prior work on neural flutter control:** read it and cite it | [PDF (NTRS)](https://ntrs.nasa.gov/api/citations/20040086574/downloads/20040086574.pdf) |
+| AIAA Aeroelastic Prediction Workshop, Benchmark SuperCritical Wing (BSCW) on PAPA | Measured **flutter points** of a supercritical wing (transonic: our incompressible model will not capture the transonic dip, which is itself a finding) | [DASHlink project](https://c3.ndc.nasa.gov/dashlink/projects/47/) · [data paper](https://ntrs.nasa.gov/api/citations/20130013394/downloads/20130013394.pdf) |
+
+Caveats: BACT and BSCW were tested in NASA's Transonic Dynamics Tunnel (heavy gas, Mach ~0.5–0.8), so
+compressibility matters and our Theodorsen model is expected to deviate. Comparing against them is still
+the right first validation step. Report the deviation honestly and discuss why.
+
 ## What to look for (in priority order)
 
 | Priority | Dataset type | Why | Where to look |

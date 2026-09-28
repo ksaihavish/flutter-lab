@@ -3,7 +3,7 @@
 *The project's running state, so a new chat or AI tool can continue without re-reading the
 whole codebase. **Update this file at the end of every working session.***
 
-Last updated: **2026-09-28** · Version **0.3.0** · Phase: 3-DOF upgrade done; **next = Phase 4 (paper)**
+Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **next = Phase 4 (real data → paper)**
 
 ---
 
@@ -16,7 +16,9 @@ Last updated: **2026-09-28** · Version **0.3.0** · Phase: 3-DOF upgrade done; 
   1-step (5 ms) loop delay.
 - **Run:** `start.bat` (web app) · `python -m pytest` (65 tests, ~70 s) ·
   `python -m flutter_ai evaluate --preset uav_flap` (~20 s).
-- **Environment:** on Windows the venv is at `%LOCALAPPDATA%\flutter-ai\venv` (kept out of OneDrive).
+- **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
+  deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
+- **Environment:** on Windows the venv is at `%LOCALAPPDATA%\flutter-ai\venv` (outside the project).
   Python 3.14, torch 2.14 CPU. The CLI and tests use that interpreter.
 - **Read next:** `Rules.md` (integrity rules), then `Phases.md` Phase 4.
 
@@ -33,7 +35,8 @@ Last updated: **2026-09-28** · Version **0.3.0** · Phase: 3-DOF upgrade done; 
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9 |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
 | Dataset intake | ✅ format + `check-data` | **No real dataset yet.** User offered to supply them; spec in `data/README.md` |
-| Git/GitHub | 🔄 | Branch `v0.3-rebuild` pushed; **PR #1 open** (not merged). Local repo lives in OneDrive: move it to e.g. `C:/dev/flutter-ai` |
+| Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker |
+| Automation | ✅ | GitHub Actions CI (lint, tests Linux+Windows, benchmark artifact, Docker build), pre-commit, Dependabot |
 
 ## 3. Validation evidence (all automated in `tests/test_physics.py`)
 
@@ -82,6 +85,9 @@ The 2-DOF `uav_section` results show the same pattern (neural better than LQR; s
 | 2026-09-28 | Flap training distribution ≤ 1.3 U_F, turbulence ≤ 1.5 m/s | ~20 % of episodes were unrecoverable for any controller on the old distribution |
 | 2026-09-28 | LLM model `claude-opus-5`, structured JSON, `fallbacks: "default"`, effort low, 40-call budget | Safety and cost; configurable via `FLUTTER_AI_LLM_MODEL` |
 | 2026-09-28 | Frontend = vanilla JS, no build step | Zero-toolchain start; React migration is Phase 5.3 |
+| 2026-09-29 | Project moved to `C:\Users\lio48\dev\flutter-lab`; venv always in `%LOCALAPPDATA%` | OneDrive syncing conflicts with git and 1 GB venvs |
+| 2026-09-29 | CI: ruff + pytest (Linux py3.11/3.13, Windows py3.13) + benchmark artifact + Docker health check; pre-commit; Dependabot | Every change is verified automatically |
+| 2026-09-29 | Docker image serves only (no PyTorch); `FLUTTER_AI_HOME=/app` | Small image; training stays local |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
@@ -96,8 +102,9 @@ The 2-DOF `uav_section` results show the same pattern (neural better than LQR; s
 
 ## 7. Next steps (in order)
 
-1. **Review and merge PR #1** on GitHub; update the repo description (the current one overclaims).
-2. **Get one real dataset** (see `data/README.md`, ★★★ rows) → `check-data` → model error %.
+1. **Build a `bact` preset from NASA TP-1998-206270** (BACT on the pitch-and-plunge apparatus with a TE flap; free PDF,
+   links in `data/README.md`) → compare our predicted flutter boundary with the published one.
+2. **Get time-history data** (ask the authors / a university wind tunnel) → `check-data` → parameter identification.
 3. Phase 4.1: run the **Claude supervisor** benchmark (needs an API key and a budget).
 4. Phase 4.2: add the **LQG + turbulence model** baseline; re-tune LQR weights.
 5. Phase 4.3–4.5: Monte Carlo robustness, statistics (20+ seeds), ablations.

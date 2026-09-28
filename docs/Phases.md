@@ -64,14 +64,14 @@ it everywhere Architecture.md §9 lists, add tests, re-run evaluate, and update 
 | 5.5 | Save/compare runs; export a PDF report | — |
 | 5.6 | Accessibility pass: keyboard control of playback, screen-reader table, texture option for colour-blind printing | axe-core audit clean |
 
-## Phase 6: Engineering hardening ⬜
+## Phase 6: Engineering hardening 🔄 (6.1–6.4 done)
 
 | # | Task |
 |---|------|
-| 6.1 | **Git + GitHub** (private at first): `git init`, first commit, push. Move the project **out of OneDrive** (e.g. `C:\dev\flutter-ai`); OneDrive and git/venvs conflict |
-| 6.2 | **CI** (GitHub Actions): ruff lint, pytest on Windows/Linux, and a benchmark smoke run on every PR |
-| 6.3 | `pre-commit` hooks (ruff, trailing whitespace, no large files); `mypy` on `src/` |
-| 6.4 | **Docker image** (`python:3.12-slim`, CPU torch optional) plus `docker compose up` |
+| 6.1 | ✅ Git + GitHub; project moved out of OneDrive to `C:\Users\lio48\dev\flutter-lab` |
+| 6.2 | ✅ CI (GitHub Actions): ruff, pytest on Linux (py3.11, 3.13) + Windows, benchmark smoke run with figure artifacts, Docker build + health check; Dependabot |
+| 6.3 | ✅ `pre-commit` hooks (ruff, whitespace, large files, private keys). Remaining: `mypy` on `src/` |
+| 6.4 | ✅ Docker image (`python:3.12-slim`, non-root, health check) + `docker compose up --build` |
 | 6.5 | Config files for experiments (YAML/TOML scenarios) instead of code edits; experiment tracking (MLflow or Weights & Biases) for training runs |
 | 6.6 | Versioned models and datasets (git-LFS or DVC), with a model card per policy |
 | 6.7 | Structured logging (JSON); `/api/health` includes the version and model hash |
