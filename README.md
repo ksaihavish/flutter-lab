@@ -98,6 +98,7 @@ openly and is the next modelling target.
 | [docs/Phases.md](docs/Phases.md) | Roadmap: paper → showcase app → hardening → commercial |
 | [docs/Design.md](docs/Design.md) | Colours, theme, typography, chart and animation rules |
 | [docs/Memory.md](docs/Memory.md) | Current state, latest results, decisions log, next steps |
+| [docs/Study-Guide.md](docs/Study-Guide.md) | **What to study to fully understand and own this project**: 8 tracks, exercises, self-checks, 16-week plan |
 | [data/README.md](data/README.md) | Which datasets to collect and the file format |
 | [docs/research/](docs/research/) | Audit of the original code; corrected paper outline |
 
