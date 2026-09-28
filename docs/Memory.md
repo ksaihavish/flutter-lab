@@ -73,6 +73,10 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 
 The 2-DOF `uav_section` results show the same pattern (neural better than LQR; supervisor neutral).
 
+**bact (NASA wind-tunnel rig), disturbances ×0.25** (from `outputs/bact/results.json`, 2026-09-29): turbulence RMS h
+neural 0.67 ± 0.18 vs LQR 0.86 ± 0.22 mm, but neural uses more effort (0.71 vs 0.48): a different trade-off point,
+not Pareto-dominant as on `uav_flap`. At 1.3 U_F: 0.38 vs 0.75 mm. Both survive 0–30 ms delay. Supervisor neutral.
+
 ## 5. Decisions log (why things are the way they are)
 
 | Date | Decision | Why |

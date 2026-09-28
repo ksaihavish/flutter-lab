@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pytest
 
+from flutter_ai.controllers import policy_path
 from flutter_ai.flutter import flutter_analysis
 from flutter_ai.params import FT, LBF, PSF, get_preset
 from flutter_ai.scenarios import scenarios_for
@@ -61,3 +62,19 @@ def test_bact_scenarios_use_scaled_disturbances():
     assert bact.h0 == pytest.approx(0.25 * std.h0)
     assert bact.gust.amplitude == pytest.approx(0.25 * std.gust.amplitude)
     assert bact.velocity_ratio == std.velocity_ratio
+
+
+@pytest.mark.skipif(not policy_path("bact").exists(), reason="no neural policy for bact")
+def test_bact_neural_policy_stabilises_and_has_delay_margin():
+    from flutter_ai.controllers import NeuralController, NeuralPolicy, closed_loop_radius
+    from flutter_ai.simulation import simulate
+
+    p = get_preset("bact")
+    Uf = flutter_analysis(p).flutter_speed
+    r = simulate(p, NeuralController(), scenarios_for("bact")["discrete_gust"]["scenario"], Uf)
+    assert not r.exceeded_limits and not r.warnings
+    pol = NeuralPolicy.load(policy_path("bact"))
+    for ratio in (0.9, 1.1):
+        K = pol.linearize(ratio, 0.5)
+        for delay in (0, 1, 2):
+            assert closed_loop_radius(p, ratio * Uf, 0.005, K, delay) < 1.0, (ratio, delay)
