@@ -267,6 +267,11 @@ LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
   10 s run; the "aggressive" asked at 4.0 s landed at 8.5 s, after the turbulence ended at 7 s. The `llm-benchmark`
   run (5 seeds, 79 decisions, busier machine) measured median 5.4 s / p95 9.7 s, 0 fallbacks, 68 % agreement with
   the rules (`outputs/uav_flap/llm_benchmark.json`).
+- Final `ft-benchmark` (2026-09-29): one LLM call (stiffness_loss, seed 9, t = 10.75 s) returned after 7165 s of wall
+  time; the whole process paused ~2 h (most likely the PC slept). The wrapper treated it as a timeout (fallback,
+  latency capped at 30 s, so the answer never landed) and that flight kept `nominal` and survived. The LLM kept
+  `nominal` in all other stiffness_loss flights, so the outcome is very probably unchanged; it is the only LLM
+  fallback in 140 flights. Re-run `ft-benchmark` on a machine that cannot sleep to remove it entirely.
 - The Claude backend is untested against the live API (only with mocks).
 - The observer's aero-lag estimate lags about half a step; that is fine, but it is part of the loop.
 - `pytest` takes ~2 min (flutter sweeps); make the slow ones optional if needed.
