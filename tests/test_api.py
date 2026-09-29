@@ -11,6 +11,9 @@ def test_health():
     r = client.get("/api/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+    hashes = r.json()["model_hashes"]
+    assert all(len(h) == 12 for h in hashes.values())
+    assert any(name.startswith("neural_policy_") for name in hashes) or not hashes
 
 
 def test_presets_and_scenarios():
@@ -50,3 +53,12 @@ def test_unknown_preset_404():
 def test_frontend_served():
     r = client.get("/")
     assert r.status_code == 200 and "Flutter Lab" in r.text
+
+
+def test_paper_draft_is_generated_from_result_files(tmp_path):
+    from flutter_ai.paper import build
+
+    path = build(tmp_path / "draft.md")
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# Paper draft (generated)")
+    assert "## 3. Results" in text and "## 6. Language-model supervision" in text

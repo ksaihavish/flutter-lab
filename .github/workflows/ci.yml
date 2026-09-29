@@ -15,15 +15,16 @@ permissions:
 
 jobs:
   lint:
-    name: Lint (ruff)
+    name: Lint (ruff) + types (mypy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: pip install ruff
+      - run: pip install -e ".[dev]"
       - run: ruff check src tests
+      - run: mypy
 
   test:
     name: Tests (${{ matrix.os }}, py${{ matrix.python }})

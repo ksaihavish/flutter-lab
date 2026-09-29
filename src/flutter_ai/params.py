@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import asdict, dataclass, field, replace
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class WingParams:
     # ---- actuation and limits ---------------------------------------------
     actuation: str = "force_moment"  # "force_moment" | "flap_servo"
     u_max: tuple[float, ...] = field(default=(60.0, 6.0))  # per input, SI
+    u_rate_max: tuple[float, ...] | None = None  # actuator slew-rate limit per input [SI/s]; None = unlimited
     h_limit: float = 0.10  # structural limit [m]
     alpha_limit_deg: float = 20.0  # structural limit [deg]
 
@@ -65,6 +67,8 @@ class WingParams:
             raise ValueError("flap_servo actuation needs a flap (set flap_hinge)")
         if len(self.u_max) != len(self.input_names):
             raise ValueError(f"u_max needs {len(self.input_names)} values for actuation '{self.actuation}'")
+        if self.u_rate_max is not None and len(self.u_rate_max) != len(self.input_names):
+            raise ValueError(f"u_rate_max needs {len(self.input_names)} values for actuation '{self.actuation}'")
 
     # ---- structure ------------------------------------------------------------
     @property
@@ -152,13 +156,15 @@ class WingParams:
 
     def with_overrides(self, **overrides) -> "WingParams":
         clean = {k: v for k, v in overrides.items() if v is not None}
-        if "u_max" in clean:
-            clean["u_max"] = tuple(clean["u_max"])
+        for key in ("u_max", "u_rate_max"):
+            if key in clean:
+                clean[key] = tuple(clean[key])
         return replace(self, **clean)
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["u_max"] = list(self.u_max)
+        d["u_rate_max"] = None if self.u_rate_max is None else list(self.u_rate_max)
         d["n_dof"] = self.n_dof
         d["dof_names"] = list(self.dof_names)
         d["inputs"] = [{"name": n, "unit": u, "max": m}
@@ -189,7 +195,7 @@ class WingParams:
         return json.dumps(d, sort_keys=True)
 
 
-_OPTIONAL_DEFAULTS = {"cl_alpha": 2.0 * math.pi, "x_ac": -0.5, "flap_span_fraction": 1.0}
+_OPTIONAL_DEFAULTS = {"cl_alpha": 2.0 * math.pi, "x_ac": -0.5, "flap_span_fraction": 1.0, "u_rate_max": None}
 
 # Unit conversions (exact)
 SLUG, FT, LBF, INCH = 14.59390294, 0.3048, 4.4482216153, 0.0254
@@ -244,18 +250,20 @@ def _bact_preset() -> WingParams:
         flap_span_fraction=0.30,
         actuation="flap_servo",
         u_max=(math.radians(12.0),),  # TE position limit ~12 deg
+        # NASA's nominal TE rate limit (TM-97-206252, Table 3), which NASA calls an educated guess, not measured
+        u_rate_max=(math.radians(250.0),),
         h_limit=0.05,  # assumed PAPA travel
         alpha_limit_deg=10.0,  # assumed
     )
 
-_UAV = dict(b=0.15, a=-0.3, mass=5.0, x_alpha=0.2, r_alpha_sq=0.25, f_h=8.0, f_alpha=16.0,
+_UAV: dict[str, Any] = dict(b=0.15, a=-0.3, mass=5.0, x_alpha=0.2, r_alpha_sq=0.25, f_h=8.0, f_alpha=16.0,
             zeta_h=0.01, zeta_alpha=0.01)
 
 PRESETS: dict[str, WingParams] = {
     "uav_flap": WingParams(
         name="uav_flap",
         description="3-DOF small-UAV wing section (0.3 m chord) with a 20%-chord trailing-edge flap "
-        "driven by a 30 Hz servo, +/-15 deg command. Default research case.",
+        "driven by a 30 Hz servo, +/-15 deg command, ~545 deg/s slew rate. Default research case.",
         **_UAV,
         flap_hinge=0.6,
         x_beta=0.01,
@@ -266,6 +274,9 @@ PRESETS: dict[str, WingParams] = {
         zeta_beta=0.56,
         actuation="flap_servo",
         u_max=(math.radians(15.0),),
+        # Slew rate of a UAV control-surface servo: DS-W001A datasheet, no-load <= 0.11 s/60 deg (~545 deg/s).
+        # Optimistic: loaded servos are slower. Without a limit the controllers commanded ~5000 deg/s.
+        u_rate_max=(math.radians(60.0 / 0.11),),
     ),
     "uav_section": WingParams(
         name="uav_section",

@@ -16,7 +16,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 in progress (4.2 L
 - **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
 - **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo (damping 0.56), ±15° command,
   1-step (5 ms) loop delay.
-- **Run:** `start.bat` (web app) · `python -m pytest` (82 tests, ~2 min) ·
+- **Run:** `start.bat` (web app) · `python -m pytest` (97 tests, ~2 min) ·
   `python -m flutter_ai evaluate --preset uav_flap` (20 seeds, ~2 min).
 - **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
   deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
@@ -145,6 +145,14 @@ Supervisor (turbulence, seed 7): lqr+rules 1.20 mm @ effort 0.77; neural+rules 0
 | 2026-09-29 | LLM answers slower than `FLUTTER_AI_LLM_TIMEOUT` (30 s) in total count as timeouts (fallback, latency = timeout); the local model is preloaded at reset with identical options | Socket timeouts only bound silences (a live call was recorded at 3989 s, likely laptop sleep); a preload with a different num_ctx made Ollama reload the model (14 s first answers) |
 | 2026-09-29 | Supervisor asks one question at a time (ticks skipped while an answer is pending) | Old code assumed many parallel LLM calls and let stale answers overwrite newer ones |
 | 2026-09-29 | `hodges_pierce` is validation-only (`VALIDATION_ONLY_PRESETS`): hidden from the simulator, 422 on /api/simulate | 0.1 Hz flutter at 2.2 m/s makes the gust scenarios meaningless |
+| 2026-09-29 | **Shared rate penalty**: the (Δu/u_max)² term (weight 1.0) is now in the LQR/LQG design cost and in the reported J, not only in neural training (`costs.RATE_WEIGHT`, `lqr.dlqr_with_rate`) | costs.py claimed one shared objective, but only the neural policy was penalised for fast commands: an unfair comparison |
+| 2026-09-29 | **Actuator slew-rate limit** in plant and training: uav_flap 545 °/s (DS-W001A UAV servo datasheet, no-load ≤0.11 s/60°, optimistic), BACT 250 °/s (NASA TM-97-206252 Table 3, stated to be an educated guess) | Unlimited, the controllers commanded ~5000 °/s; with any realistic limit every controller failed the old uav_flap scenarios |
+| 2026-09-29 | uav_flap disturbances ×0.33 (`DISTURBANCE_SCALE`), training turbulence ≤ 0.5 m/s, ic_scale 0.4; neural policy retrained | Largest tested scale at which a classical controller survives every scenario with the 545 °/s servo (same approach as BACT ×0.25) |
+| 2026-09-29 | Classical **design knobs tuned for the real actuator** (`tune`: LQR rate multiplier; LQG rate multiplier + assumed sensor noise), on seeds 1000–1009 only; fewest failures, then lowest J; stored in `models/classical_tuning_<preset>.json` (fingerprint-checked) | The neural policy is optimised through the rate-limited plant; the classical designs deserve the same chance. Untuned LQG failed 20–100 % of runs with the rate limit (no guaranteed margins, Doyle 1978) |
+| 2026-09-29 | `simulate(..., design_params=)` separates the controllers' on-board model from the true wing | Needed for the robustness study (model error) |
+| 2026-09-29 | Identification: output error with **multiple shooting** (0.25 s segments from the measured state; lag states rebuilt with first-order hold, gust held per sample) | Replaying a whole run through a model above flutter amplifies CSV rounding exponentially |
+| 2026-09-29 | mypy on `src/` in CI (numpy stubs need python_version 3.12 for analysis; torch/scipy/matplotlib/anthropic not followed; pydantic plugin) | Phase 6.3; it caught ~80 issues, mostly unchecked `None` flutter speeds and flap hinges |
+| 2026-09-29 | Paper draft is generated (`python -m flutter_ai paper`), prose in `paper.py`, numbers from result files | Rules §1: no hand-typed numbers, even in drafts |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 

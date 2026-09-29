@@ -6,6 +6,7 @@ HTTP API + static frontend.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from functools import lru_cache
 
@@ -18,7 +19,7 @@ from ..experiments import neural_available, run_case
 from ..flutter import flutter_analysis, pk_flutter_speed
 from ..gusts import GustSpec
 from ..params import PRESETS, VALIDATION_ONLY_PRESETS, WingParams, get_preset
-from ..paths import FRONTEND_DIR
+from ..paths import FRONTEND_DIR, MODELS_DIR
 from ..scenarios import scenarios_for
 from ..simulation import Scenario
 from ..supervisor import MODES, llm_status
@@ -51,11 +52,18 @@ def _flutter_speed(p: WingParams) -> float:
     return Uf
 
 
+def _file_hashes() -> dict[str, str]:
+    """Short SHA-256 of every trained policy and tuning file, so a result can be traced to the exact models."""
+    files = sorted([*MODELS_DIR.glob("neural_policy_*.npz"), *MODELS_DIR.glob("classical_tuning_*.json")])
+    return {f.name: hashlib.sha256(f.read_bytes()).hexdigest()[:12] for f in files}
+
+
 @app.get("/api/health")
 def health():
     return {
         "status": "ok",
         "version": __version__,
+        "model_hashes": _file_hashes(),
         "neural_policy_available": {name: neural_available(p) for name, p in PRESETS.items()},
         "llm": llm_status(),
     }

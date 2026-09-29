@@ -12,15 +12,15 @@ from flutter_ai.controllers import (
     NeuralPolicy,
     OpenLoop,
     closed_loop_radius,
-    delay_augmented,
     lqr_gain,
     policy_path,
 )
+from flutter_ai.controllers.lqr import rate_augmented
 from flutter_ai.flutter import flutter_speed
 from flutter_ai.gusts import GustSpec
 from flutter_ai.model import discrete_state_space
 from flutter_ai.params import get_preset
-from flutter_ai.scenarios import SCENARIOS
+from flutter_ai.scenarios import SCENARIOS, scenarios_for
 from flutter_ai.simulation import Scenario, simulate
 from flutter_ai.supervisor import RuleSupervisor
 
@@ -62,7 +62,7 @@ def test_delay_aware_lqr_is_stable_at_its_design_delay(preset, ratio, delay):
     p, Uf = setup(preset)
     d = discrete_state_space(p, ratio * Uf, 0.005)
     K = lqr_gain(p, ratio * Uf, 0.005, 0.5, delay)
-    A, B = delay_augmented(d.Ad, d.Bd, delay)
+    A, B = rate_augmented(d.Ad, d.Bd, delay)  # the design state always carries u_{k-1} (rate penalty)
     rho = np.max(np.abs(np.linalg.eigvals(A - B @ K)))
     assert rho < 1.0
     assert closed_loop_radius(p, ratio * Uf, 0.005, K, delay, with_observer=False) == pytest.approx(rho)
@@ -183,7 +183,7 @@ def test_lqg_does_not_amplify_gusts_below_flutter(preset):
 def test_lqg_survives_turbulence_above_flutter(preset):
     # 1.1 U_F only: from 1.2 U_F, 1.5 m/s turbulence exceeds the uav_flap flap's authority for every controller
     p, Uf = setup(preset)
-    r = simulate(p, LQGController(), SCENARIOS["turbulence_patch"]["scenario"], Uf)
+    r = simulate(p, LQGController(), scenarios_for(preset)["turbulence_patch"]["scenario"], Uf)
     assert not r.exceeded_limits
 
 
@@ -199,7 +199,7 @@ def test_lqg_kalman_filter_tracks_the_gust():
         return u
 
     ctrl.compute = recording
-    r = simulate(p, ctrl, SCENARIOS["turbulence_patch"]["scenario"], Uf)
+    r = simulate(p, ctrl, scenarios_for("uav_flap")["turbulence_patch"]["scenario"], Uf)
     est = np.array(estimates)
     active = r.w_gust != 0
     assert np.corrcoef(est[active], r.w_gust[active])[0, 1] > 0.85

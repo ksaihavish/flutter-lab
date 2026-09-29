@@ -206,7 +206,7 @@ def delay_sweep_figure(sweep: dict, path: Path) -> Path:
     labels = {"lqr": "LQR re-designed for the true delay (optimistic)", "lqr_nominal": "LQR designed for 5 ms, fixed",
               "lqg": "LQG re-designed for the true delay (optimistic)", "lqg_nominal": "LQG designed for 5 ms, fixed",
               "neural": "Neural (one policy)"}
-    styles = {"lqr": dict(color=CASE_COLORS["lqr"], alpha=0.45), "lqr_nominal": dict(color=CASE_COLORS["lqr"]),
+    styles: dict[str, dict] = {"lqr": dict(color=CASE_COLORS["lqr"], alpha=0.45), "lqr_nominal": dict(color=CASE_COLORS["lqr"]),
               "lqg": dict(color=CASE_COLORS["lqg"], alpha=0.45), "lqg_nominal": dict(color=CASE_COLORS["lqg"]),
               "neural": dict(color=CASE_COLORS["neural"])}
     for ctrl in [c for c in ("lqr", "lqr_nominal", "lqg", "lqg_nominal", "neural") if c in sweep]:
@@ -245,3 +245,88 @@ def make_all(p, fa, Uf_pk, examples: dict, results: dict, out_dir: Path) -> list
     if tf:
         figs.append(tf)
     return figs
+
+
+def robustness_figure(res: dict, path: Path) -> Path:
+    """Failure rate and cost of the surviving runs vs model error, sensor noise and actuator rate limit."""
+    ctrls = res["controllers"]
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    levels = [100 * lv for lv in res["levels"]]
+    par = res["parameters"]["turbulence_patch"]
+    rows = [par[f"{lv:.2f}"] for lv in res["levels"]]
+    for c in ctrls:
+        color = CASE_COLORS.get(c, INK2)
+        axes[0, 0].plot(levels, [100 * r[c]["failure_rate"] for r in rows], color=color, marker="o", ms=4,
+                        label=CASE_LABELS.get(c, c))
+        j = [r[c]["cost_J"]["median"] if r[c]["cost_J"] else np.nan for r in rows]
+        axes[0, 1].plot(levels, j, color=color, marker="o", ms=4)
+    axes[0, 0].set_xlabel("Model error: mass, stiffness, damping, servo (± %)")
+    axes[0, 0].set_ylabel("Failed runs (%)")
+    axes[0, 0].set_title("Turbulence at 1.1 × nominal flutter speed")
+    axes[0, 1].set_xlabel("Model error (± %)")
+    axes[0, 1].set_ylabel("Cost J of surviving runs (median)")
+    axes[0, 1].set_title("Lower is better")
+
+    noise = res["sensor_noise"]
+    nx = [100 * float(k) for k in noise]
+    for c in ctrls:
+        j = [noise[k][c]["cost_J"]["median"] if noise[k][c]["cost_J"] else np.nan for k in noise]
+        axes[1, 0].plot(nx, j, color=CASE_COLORS.get(c, INK2), marker="o", ms=4)
+    axes[1, 0].set_xlabel("Sensor noise (% of reference scale)")
+    axes[1, 0].set_ylabel("Cost J of surviving runs (median)")
+    axes[1, 0].set_title("Sensor noise (turbulence)")
+
+    rate = res.get("rate_limit") or {}
+    if rate:
+        keys = list(rate)
+        labels = ["none" if k == "none" else f"{k}°/s" for k in keys]
+        x = np.arange(len(keys))
+        for c in ctrls:
+            axes[1, 1].plot(x, [100 * rate[k][c]["failure_rate"] for k in keys], color=CASE_COLORS.get(c, INK2),
+                            marker="o", ms=4)
+        axes[1, 1].set_xticks(x, labels)
+        axes[1, 1].set_xlabel("Flap slew-rate limit (unknown to the designs)")
+        axes[1, 1].set_ylabel("Failed runs (%)")
+        axes[1, 1].set_title("Actuator rate limit (turbulence)")
+    else:
+        axes[1, 1].axis("off")
+    axes[0, 0].legend(loc="upper left")
+    fig.suptitle(f"Robustness: controllers designed for the nominal wing ({res['metadata']['draws']} draws per point)")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
+    """LLM latency, and where supervised runs land relative to the fixed-aggressiveness trade-off curves."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+    lat = [d["latency_s"] for d in res["decisions"] if d["source"] == "llm"]
+    ax1.hist(lat, bins=20, color=CASE_COLORS["neural+llm"], edgecolor="white")
+    ax1.axvline(0.25, color=INK2, lw=0.8)
+    ax1.annotate("supervisor interval 0.25 s", (0.25, 0.95), xycoords=("data", "axes fraction"), fontsize=7.5,
+                 color=INK2, xytext=(4, 0), textcoords="offset points", va="top")
+    ax1.set_xlabel("Answer latency (s)")
+    ax1.set_ylabel("Decisions")
+    ax1.set_title(f"{res['metadata']['model']} ({res['metadata']['backend']}): latency per decision")
+
+    seed0 = res["scenarios"]["turbulence_patch"]["seed0"]
+    for ctrl in ("neural", "lqg"):
+        if tradeoff and ctrl in tradeoff:
+            pts = tradeoff[ctrl]
+            ax2.plot([q["control_energy"] for q in pts], [q["rms_h_mm"] for q in pts], color=CASE_COLORS[ctrl],
+                     marker="o", ms=3, lw=1.2, label=f"{CASE_LABELS[ctrl]}, fixed aggressiveness 0→1")
+        for sup, marker in (("rules", "D"), ("random", "s"), ("llm", "*")):
+            m = seed0.get(f"{ctrl}+{sup}")
+            if m and not m["exceeded_limits"]:
+                ax2.plot(m["control_energy"], m["rms_h_mm"], marker=marker, ms=10 if marker == "*" else 7,
+                         color=CASE_COLORS[ctrl], mec="white", mew=1.2, linestyle="none",
+                         label=f"{CASE_LABELS[ctrl]} + {sup} supervisor")
+    ax2.set_xlabel("Actuator effort  ∫ Σ(u/u_max)² dt  (s)")
+    ax2.set_ylabel("RMS plunge (mm)")
+    ax2.set_title("Turbulence: a supervisor adds value only below its curve")
+    ax2.legend(loc="best", fontsize=7, framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path

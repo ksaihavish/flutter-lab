@@ -121,7 +121,7 @@ class LLMSupervisor:
 
     name = "llm"
     backend = ""
-    transport_errors: tuple[type[Exception], ...] = ()
+    transport_errors: tuple[type[BaseException], ...] = ()
 
     def __init__(self, model: str | None = None, timeout_s: float | None = None, max_calls: int = 40):
         self.model = model or llm_model(self.backend)
@@ -141,6 +141,8 @@ class LLMSupervisor:
 
     def decide(self, f: SituationFeatures) -> Decision:
         report = format_report(f)
+        caught: tuple[type[BaseException], ...] = (*self.transport_errors, TimeoutError, ImportError, ValueError,
+                                                   KeyError, StopIteration, TypeError)
         start = time.perf_counter()
         try:
             if self.calls >= self.max_calls:
@@ -155,8 +157,7 @@ class LLMSupervisor:
             if mode not in MODES:
                 raise ValueError(f"invalid mode {mode!r}")
             return make_decision(f.time, mode, reasoning, source="llm", latency_s=latency)
-        except (*self.transport_errors, TimeoutError, ImportError, ValueError, KeyError, StopIteration,
-                TypeError) as exc:
+        except caught as exc:
             # A real system gives up at the timeout, so a timed-out call costs exactly timeout_s.
             latency = time.perf_counter() - start
             if isinstance(exc, TimeoutError):

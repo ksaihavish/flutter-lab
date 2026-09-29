@@ -63,6 +63,7 @@ class SimResult:
     warnings: list[str]
     energy: np.ndarray = field(init=False)
     metrics: dict = field(default_factory=dict)
+    u_applied: np.ndarray | None = None  # (T, m) input reaching the actuator (after delay and rate limit)
 
     def to_dict(self, max_points: int | None = 1500) -> dict:
         n_t = len(self.t)
@@ -107,10 +108,13 @@ def simulate(
     flutter_speed: float,
     supervisor=None,
     aggressiveness: float | None = None,
+    design_params: WingParams | None = None,
 ) -> SimResult:
     """
     aggressiveness: initial controller aggressiveness in [0, 1]. Without a supervisor
     it stays fixed for the whole run (used for trade-off sweeps). Default: 'balanced'.
+    design_params: the wing the controller and supervisor were designed for (their on-board model).
+    None = the true wing. Robustness studies fly a perturbed `params` with nominal design_params.
     """
     from .metrics import compute_metrics
 
@@ -127,8 +131,12 @@ def simulate(
     rng = np.random.default_rng(scenario.seed)
     noise_std = scenario.sensor_noise * reference_scales(params)
     delay = int(scenario.input_delay_steps)
+    onboard = design_params or params
+    # Actuator slew-rate limit, applied to the command reaching the actuator (after the loop delay).
+    rate = None if params.u_rate_max is None else np.asarray(params.u_rate_max, dtype=float) * dt
+    actuator = np.zeros(m)
 
-    controller.reset(params, U, dt, delay)
+    controller.reset(onboard, U, dt, delay)
     if aggressiveness is None:
         mode = DEFAULT_MODE
         controller.set_aggressiveness(MODES[mode]["aggressiveness"])
@@ -140,6 +148,7 @@ def simulate(
 
     xs = np.zeros((n_t, 2 * n + 2))
     us = np.zeros((n_t, m))
+    ua = np.zeros((n_t, m))
     ys = np.zeros((n_t, 2 * n))
     agg = np.zeros(n_t)
     modes: list[str] = [mode] * n_t
@@ -170,7 +179,7 @@ def simulate(
         if supervisor is not None and t[k] >= next_sup - 1e-12 and k > window_start and pending:
             next_sup += scenario.supervisor_interval
         elif supervisor is not None and t[k] >= next_sup - 1e-12 and k > window_start:
-            feats = extract_features(params, float(t[k]), U, flutter_speed, ys[window_start:k + 1],
+            feats = extract_features(onboard, float(t[k]), U, flutter_speed, ys[window_start:k + 1],
                                      us[window_start:k], prev_energy, mode)
             prev_energy = feats.window_energy
             decision = supervisor.decide(feats)
@@ -191,12 +200,17 @@ def simulate(
 
         if abs(x[0]) > params.h_limit or abs(x[1]) > alpha_lim or not np.all(np.isfinite(x)):
             exceeded, failure_time, last = True, float(t[k]), k
+            ua[k] = ua[k - 1] if k else 0.0  # the run stops here; the actuator holds its last input
             break
         if delay:
             in_flight.append(u)
             u_applied = in_flight.popleft()
         else:
             u_applied = u
+        if rate is not None:
+            actuator = actuator + np.clip(u_applied - actuator, -rate, rate)
+            u_applied = actuator
+        ua[k] = u_applied
         if k < n_t - 1:
             x = sys.Ad @ x + sys.Bd @ u_applied + sys.Gd[:, 0] * w_g[k]
 
@@ -219,6 +233,7 @@ def simulate(
         failure_time=failure_time,
         warnings=list(controller.warnings),
     )
+    result.u_applied = ua[sl]
     result.energy = structural_energy(params, result.x)
     result.metrics = compute_metrics(result, params, scenario)
     return result

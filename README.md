@@ -34,12 +34,18 @@ python -m flutter_ai serve
 | Command | What it does |
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
-| `start.bat -Test` / `python -m pytest` | 82 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
-| `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark → `outputs/uav_flap/results.json` + 9 publication figures (~20 s) |
+| `start.bat -Test` / `python -m pytest` | 97 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark (20 seeds, paired statistics) → `outputs/uav_flap/results.json` + figures (~2 min) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
-| `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU) |
+| `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU); `--variant` trains ablations |
+| `python -m flutter_ai tune --preset uav_flap` | Tune the LQR/LQG design knobs for the real actuator on episodes disjoint from the test set |
+| `python -m flutter_ai robustness --preset uav_flap` | Model error, sensor noise and actuator rate limits → `robustness.json` + figure |
+| `python -m flutter_ai ablations --preset uav_flap` | What each part of the neural policy and the supervisor contributes → `ablations.json` |
+| `python -m flutter_ai llm-benchmark --preset uav_flap` | LLM supervisor (local Ollama by default) with measured latency → `llm_benchmark.json` + figure |
 | `python -m flutter_ai validate` | Compare the model with NASA's BACT wind-tunnel flutter measurements → `outputs/validation/bact.json` |
 | `python -m flutter_ai check-data data/<folder>` | Validate an experimental dataset and compare predicted vs measured flutter speed ([data/README.md](data/README.md)) |
+| `python -m flutter_ai identify data/<folder>` | Identify physical parameters (frequencies, damping, ...) from a dataset's time histories |
+| `python -m flutter_ai paper` | Regenerate `docs/research/paper-draft.md` from the result files (no hand-typed numbers) |
 
 Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, from published data), `uav_section` (2-DOF),
 `hodges_pierce` (textbook validation case).

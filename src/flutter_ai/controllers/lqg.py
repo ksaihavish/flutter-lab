@@ -17,8 +17,8 @@ from scipy.linalg import solve_discrete_are
 from ..model import discrete_state_space
 from ..params import WingParams
 from .base import Controller
-from .costs import input_weight, state_weight
-from .lqr import delay_augmented
+from .costs import input_weight, rate_weight, state_weight
+from .lqr import dlqr_with_rate
 from .neural import state_scales
 
 MEASUREMENT_NOISE_FRACTION = 1e-3  # assumed sensor noise std, as a fraction of the reference scales
@@ -41,19 +41,19 @@ def gust_augmented(p: WingParams, U: float, dt: float, correlation_time: float) 
 
 
 def lqg_regulator_gain(p: WingParams, U: float, dt: float, aggressiveness: float, delay: int,
-                       correlation_time: float) -> np.ndarray:
-    """K for u_k = -K [x_k, w_k, u_{k-1}, ..., u_{k-d}]; the gust column is a feedforward term."""
+                       correlation_time: float, rate_multiplier: float = 1.0) -> np.ndarray:
+    """K for u_k = -K [x_k, w_k, u_{k-1}, ..., u_{k-D}] (same cost as LQR, incl. the rate penalty);
+    the gust column is a feedforward term."""
     A, B = gust_augmented(p, U, dt, correlation_time)
-    A, B = delay_augmented(A, B, delay)
     N = state_weight(p).shape[0]
     Q = np.zeros_like(A)
     Q[:N, :N] = state_weight(p) * dt
-    R = input_weight(p, aggressiveness) * dt
-    P = solve_discrete_are(A, B, Q, R)
-    return np.linalg.solve(R + B.T @ P @ B, B.T @ P @ A)
+    return dlqr_with_rate(A, B, Q, input_weight(p, aggressiveness) * dt, rate_weight(p) * dt * rate_multiplier,
+                          delay)
 
 
-def kalman_gain(p: WingParams, U: float, dt: float, gust_rms: float, correlation_time: float) -> np.ndarray:
+def kalman_gain(p: WingParams, U: float, dt: float, gust_rms: float, correlation_time: float,
+                measurement_noise: float = MEASUREMENT_NOISE_FRACTION) -> np.ndarray:
     """Steady-state filter gain L for [x, w] from y = [q, q'] (update: x_hat += L (y - C x_hat))."""
     A, _ = gust_augmented(p, U, dt, correlation_time)
     N = A.shape[0] - 1
@@ -63,7 +63,7 @@ def kalman_gain(p: WingParams, U: float, dt: float, gust_rms: float, correlation
     phi = A[N, N]
     scales = state_scales(p)
     W = np.diag(np.append((MODEL_NOISE_FRACTION * scales) ** 2, gust_rms**2 * (1.0 - phi**2)))
-    V = np.diag((MEASUREMENT_NOISE_FRACTION * scales[:n2]) ** 2)
+    V = np.diag((measurement_noise * scales[:n2]) ** 2)
     P = solve_discrete_are(A.T, C.T, W, V)
     return P @ C.T @ np.linalg.inv(C @ P @ C.T + V)
 
@@ -73,14 +73,18 @@ class LQGController(Controller):
     gust_rms / correlation_time: turbulence model the design assumes. None = the benchmark's
     turbulence_patch scenario for this preset (the same statistics the neural policy trains on).
     design_delay: loop delay the regulator and filter assume. None = the true delay.
+    rate_multiplier / measurement_noise: design knobs (controllers/design.py). None = tuned values, if any.
     """
 
     name = "lqg"
     label = "LQG (turbulence model)"
 
     def __init__(self, gust_rms: float | None = None, correlation_time: float | None = None,
-                 design_delay: int | None = None):
+                 design_delay: int | None = None, rate_multiplier: float | None = None,
+                 measurement_noise: float | None = None):
         super().__init__()
+        self.rate_multiplier = rate_multiplier
+        self.measurement_noise = measurement_noise
         self.gust_rms = gust_rms
         self.correlation_time = correlation_time
         self.design_delay = design_delay
@@ -96,18 +100,30 @@ class LQGController(Controller):
         else:
             self._rms, self._tau = self.gust_rms, self.correlation_time
         self._model_delay = self.delay if self.design_delay is None else int(self.design_delay)
+        from .design import design_settings
+
+        settings, warning = design_settings(params, "lqg")
+        if warning:
+            self.warnings.append(warning)
+        self._rate = self.rate_multiplier if self.rate_multiplier is not None else settings["rate_multiplier"]
+        noise = self.measurement_noise if self.measurement_noise is not None else settings["measurement_noise"]
         self._A, self._B = gust_augmented(params, U, dt, self._tau)
-        self._L = kalman_gain(params, U, dt, self._rms, self._tau)
+        self._L = kalman_gain(params, U, dt, self._rms, self._tau, noise)
         self._C = np.zeros((2 * params.n_dof, self._A.shape[0]))
         self._C[:, :2 * params.n_dof] = np.eye(2 * params.n_dof)
         self._gains: dict[float, np.ndarray] = {}
         self.x_pred = np.zeros(self._A.shape[0])
         self.gust_estimate = 0.0
+        # The filter's input model includes the actuator's known slew-rate limit (a datasheet value), so a
+        # rate-limited flap is not mistaken for a gust.
+        self._rate_step = None if params.u_rate_max is None else np.asarray(params.u_rate_max, dtype=float) * dt
+        self._actuator = np.zeros(len(self.u_max))
 
     def _gain(self) -> np.ndarray:
         key = round(self.aggressiveness, 3)
         if key not in self._gains:
-            self._gains[key] = lqg_regulator_gain(self.params, self.U, self.dt, key, self._model_delay, self._tau)
+            self._gains[key] = lqg_regulator_gain(self.params, self.U, self.dt, key, self._model_delay, self._tau,
+                                                  self._rate)
         return self._gains[key]
 
     def compute(self, t: float, x_hat: np.ndarray) -> np.ndarray:
@@ -116,9 +132,13 @@ class LQGController(Controller):
         est = self.x_pred + self._L @ (y - self._C @ self.x_pred)
         self.gust_estimate = float(est[-1])
         d = self._model_delay
-        past = list(self.history)[:d]
-        u = -self._gain() @ np.concatenate([est, *past])
+        K = self._gain()
+        past = list(self.history)[:(K.shape[1] - len(est)) // len(self.u_max)]  # u_{k-1}.. (>= 1 block)
+        u = -K @ np.concatenate([est, *past])
         u = np.clip(u, -self.u_max, self.u_max)
-        applied = u if d == 0 else self.history[d - 1]  # the command reaching the plant this step
+        applied = u if d == 0 else self.history[d - 1]  # the command reaching the actuator this step
+        if self._rate_step is not None:
+            self._actuator = self._actuator + np.clip(applied - self._actuator, -self._rate_step, self._rate_step)
+            applied = self._actuator
         self.x_pred = self._A @ est + self._B @ applied
         return u

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import platform
+from collections.abc import Callable
+from functools import partial
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,16 +18,16 @@ from pathlib import Path
 import numpy as np
 
 from . import __version__
-from .controllers import LQGController, LQRController, NeuralController, OpenLoop, policy_path
-from .flutter import flutter_analysis, pk_flutter_speed
+from .controllers import Controller, LQGController, LQRController, NeuralController, OpenLoop, policy_path
+from .flutter import flutter_analysis, flutter_speed, pk_flutter_speed
 from .params import WingParams
 from .paths import OUTPUTS_DIR
 from .scenarios import SCENARIOS, scenarios_for
 from .simulation import Scenario, SimResult, simulate
-from .supervisor import RuleSupervisor, make_llm_supervisor
+from .supervisor import RandomSupervisor, RuleSupervisor, make_llm_supervisor
 
 CONTROLLERS = ("open_loop", "lqr", "lqg", "neural")
-SUPERVISORS = ("none", "rules", "llm")
+SUPERVISORS = ("none", "rules", "random", "llm")
 
 # The comparison table in the paper
 STANDARD_CASES = [
@@ -55,6 +57,8 @@ def make_supervisor(kind: str | None):
         return None
     if kind == "rules":
         return RuleSupervisor()
+    if kind == "random":
+        return RandomSupervisor()
     if kind == "llm":
         return make_llm_supervisor()
     raise ValueError(f"Unknown supervisor '{kind}'. Use one of {SUPERVISORS}")
@@ -102,7 +106,7 @@ def delay_sweep(p: WingParams, Uf: float, controllers, delays=(0, 1, 2, 3, 4, 6)
     """
     base = base or SCENARIOS["discrete_gust"]["scenario"]
     out: dict = {"delays": list(delays), "dt": base.dt}
-    variants = {c: (lambda c=c: make_controller(c)) for c in controllers}
+    variants: dict[str, Callable[[], Controller]] = {c: partial(make_controller, c) for c in controllers}
     if "lqr" in controllers:
         variants["lqr_nominal"] = lambda: LQRController(design_delay=1)
     if "lqg" in controllers:
@@ -182,11 +186,12 @@ def run_benchmark(p: WingParams, seeds=tuple(range(20)), out_dir: Path | None = 
     out_dir = Path(out_dir or OUTPUTS_DIR / p.name)
     out_dir.mkdir(parents=True, exist_ok=True)
     fa = flutter_analysis(p)
-    Uf = fa.flutter_speed
+    Uf = flutter_speed(p)
     Uf_pk = pk_flutter_speed(p)
     log(f"Preset '{p.name}' ({p.n_dof}-DOF, actuation {p.actuation})")
-    log(f"Flutter speed: {Uf:.3f} m/s (state-space)   {Uf_pk:.3f} m/s (p-k, exact Theodorsen)   "
-        f"difference {100 * (Uf - Uf_pk) / Uf_pk:+.2f}%")
+    pk_text = f"{Uf_pk:.3f} m/s (p-k, exact Theodorsen)   difference {100 * (Uf - Uf_pk) / Uf_pk:+.2f}%" \
+        if Uf_pk else "p-k found no flutter in its range"
+    log(f"Flutter speed: {Uf:.3f} m/s (state-space)   {pk_text}")
 
     has_neural = neural_available(p)
     cases = [c for c in STANDARD_CASES if has_neural or c[0] != "neural"]

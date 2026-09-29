@@ -10,7 +10,7 @@ Reference: `docs/PRD.md` (what and why), `docs/Architecture.md` (how), `docs/Des
 
 ## Commands
 ```
-python -m pytest                                    # 82 tests (~2 min), must pass before committing
+python -m pytest                                    # 97 tests (~2 min), must pass before committing
 python -m flutter_ai analyze  --preset uav_flap     # flutter speed + p-k validation + V-g figure
 python -m flutter_ai evaluate --preset uav_flap     # benchmark -> outputs/uav_flap/results.json + figures
 python -m flutter_ai train    --preset uav_flap     # retrain neural policy (needs torch, ~5 min)

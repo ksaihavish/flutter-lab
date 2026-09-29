@@ -21,6 +21,7 @@ Requires PyTorch (pip install -e ".[train]").
 from __future__ import annotations
 
 import json
+from typing import Any
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -31,7 +32,7 @@ import numpy as np
 from . import __version__
 from .aero import JONES_EPS
 from .controllers.base import effort_cost_multiplier
-from .controllers.costs import input_weight, reference_scales, state_weight
+from .controllers.costs import RATE_WEIGHT, input_weight, reference_scales, state_weight
 from .controllers.lqr import lqr_gain
 from .controllers.neural import POLICY_FORMAT, U_RATIO_SCALE, NeuralPolicy, policy_path, state_scales
 from .flutter import flutter_speed
@@ -56,8 +57,9 @@ class TrainConfig:
     lr_imitation: float = 3e-3
     lr_finetune: float = 5e-4
     turbulence_rms_max: float = 2.0  # [m/s]
-    rate_weight: float = 1.0  # penalty on (du / u_max)^2 per step (actuator bandwidth)
+    rate_weight: float = RATE_WEIGHT  # penalty on (du / u_max)^2 per step, shared with LQR/LQG (costs.py)
     ic_scale: float = 1.0  # scales the random initial conditions of fine-tuning episodes
+    use_airspeed: bool = True  # ablation: False feeds a constant airspeed feature (the policy is speed-blind)
     seed: int = 0
 
     @classmethod
@@ -71,7 +73,9 @@ class TrainConfig:
             return cls(velocity_ratio_range=(0.8, 1.2), n_velocities=9, turbulence_rms_max=0.5, ic_scale=0.3,
                        finetune_iters=800)
         if p.actuation == "flap_servo":
-            return cls(velocity_ratio_range=(0.8, 1.3), n_velocities=11, turbulence_rms_max=1.5, finetune_iters=800)
+            # Benchmark disturbances are x0.33 (servo slew-rate limit, scenarios.DISTURBANCE_SCALE): 0.5 m/s RMS
+            return cls(velocity_ratio_range=(0.8, 1.3), n_velocities=11, turbulence_rms_max=0.5, ic_scale=0.4,
+                       finetune_iters=800)
         return cls()
 
 
@@ -107,10 +111,13 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     Ad, Bd, Gd, obs_decay, obs_gain, w_rows = [], [], [], [], [], []
     for U in velocities:
         d = discrete_state_space(p, U, cfg.dt)
-        Ad.append(d.Ad), Bd.append(d.Bd), Gd.append(d.Gd[:, 0])
+        Ad.append(d.Ad)
+        Bd.append(d.Bd)
+        Gd.append(d.Gd[:, 0])
         lam = np.array(JONES_EPS) * U / p.b
         decay = np.exp(-lam * cfg.dt)
-        obs_decay.append(decay), obs_gain.append((1 - decay) / lam)
+        obs_decay.append(decay)
+        obs_gain.append((1 - decay) / lam)
         dq, dqd = downwash_rows(p, U)
         w_rows.append(np.concatenate([dq, dqd]))
     agg_grid = np.linspace(0.0, 1.0, 11)
@@ -125,9 +132,11 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     scales_t = T(scales)
     u_max = np.asarray(p.u_max, dtype=float)
     u_max_t = T(u_max)
+    rate_t = None if p.u_rate_max is None else T(np.asarray(p.u_rate_max, dtype=float) * cfg.dt)
     Q_t = T(state_weight(p))
     R_base_t = T(input_weight(p, 0.5) / effort_cost_multiplier(0.5))
     ratios_t = T(ratios)
+    speed_on = 1.0 if cfg.use_airspeed else 0.0
     ref = reference_scales(p)
     lim_t = T([p.h_limit, np.radians(p.alpha_limit_deg)])
 
@@ -141,7 +150,7 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     net = torch.nn.Sequential(*layers)
 
     def features(x, u_prev, v_idx, a):
-        return torch.cat([x / scales_t, u_prev / u_max_t, ((ratios_t[v_idx] - 1.0) / U_RATIO_SCALE)[:, None],
+        return torch.cat([x / scales_t, u_prev / u_max_t, (speed_on * (ratios_t[v_idx] - 1.0) / U_RATIO_SCALE)[:, None],
                           (2 * a - 1)[:, None]], dim=1)
 
     def policy_offset(v_idx, a):
@@ -204,6 +213,7 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
         z_hat = torch.zeros(B, 2)
         w = torch.zeros(B)
         H = torch.zeros(B, d_max + 1, m)  # H[:, 0] newest command; applied input = H[:, delay]
+        act = torch.zeros(B, m)  # actuator setpoint under the slew-rate limit (same as simulation.py)
         R_eff = R_base_t[None] * (10.0 ** (1.0 - 2.0 * a))[:, None, None]
         J = torch.zeros(B)
         rate_sq = torch.zeros(B)
@@ -223,6 +233,9 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
             z_hat = obs_decay_t[v_idx] * z_hat + obs_gain_t[v_idx] * w_meas[:, None]
             H = torch.cat([u[:, None], H[:, :-1]], dim=1)
             u_applied = H[rows, d_idx]
+            if rate_t is not None:
+                act = act + torch.maximum(torch.minimum(u_applied - act, rate_t), -rate_t)
+                u_applied = act
             w = phi * w + noise[k]
             x = (Ad_t[v_idx] @ x[:, :, None])[:, :, 0] + (Bd_t[v_idx] @ u_applied[:, :, None])[:, :, 0] \
                 + Gd_t[v_idx] * w[:, None]
@@ -238,8 +251,8 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     delays = list(range(cfg.delay_range[0], d_max + 1))
     val = {d: sample_episodes(256, cfg.horizon_end, np.random.default_rng(cfg.seed + 1000), delay=d) for d in delays}
 
-    def validate(control_fn) -> dict:
-        out = {}
+    def validate(control_fn) -> dict[str, Any]:
+        out: dict[str, Any] = {}
         with torch.no_grad():
             for d in delays:
                 J, rate = rollout(val[d], cfg.horizon_end, control_fn, return_rate=True)
@@ -310,7 +323,8 @@ def train_policy(p: WingParams, cfg: TrainConfig | None = None, out_path: Path |
     }
     policy_np = NeuralPolicy(weights, scales, u_max, meta)
     policy_np.save(out_path)
-    history_path(p.name).write_text(json.dumps(history))
+    hist = history_path(p.name) if out_path == policy_path(p.name) else out_path.with_name(out_path.stem + "_history.json")
+    hist.write_text(json.dumps(history) + "\n")
     log(f"Saved policy to {out_path} ({meta['training_seconds']} s)")
     return policy_np
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .controllers.costs import input_weight, state_weight
+from .controllers.costs import input_weight, rate_weight, state_weight
 from .params import WingParams
 
 SETTLE_BAND_FRACTION = 0.02  # settled = within 2 % of the structural limits
@@ -51,8 +51,10 @@ def compute_metrics(result, params: WingParams, scenario) -> dict:
     # The quadratic cost every controller is designed or trained to minimise (controllers/costs.py), with one
     # fixed effort weight so runs are comparable. None for failed runs: a truncated run would score too well.
     xq = x[:, :state_weight(params).shape[0]]
+    du_all = np.diff(np.vstack([np.zeros((1, u.shape[1])), u]), axis=0)  # command changes, from rest
     cost = float(dt * (np.einsum("ti,ij,tj->", xq, state_weight(params), xq)
-                       + np.einsum("ti,ij,tj->", u, input_weight(params, COST_AGGRESSIVENESS), u)))
+                       + np.einsum("ti,ij,tj->", u, input_weight(params, COST_AGGRESSIVENESS), u)
+                       + np.einsum("ti,ij,tj->", du_all, rate_weight(params), du_all)))
     switches = sum(1 for a, b in zip(result.mode, result.mode[1:]) if a != b)
     llm_calls = sum(1 for d in result.decisions if d.source.startswith("llm"))
     llm_fallbacks = sum(1 for d in result.decisions if d.source == "llm_fallback")
