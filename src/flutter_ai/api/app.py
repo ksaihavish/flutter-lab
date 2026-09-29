@@ -23,12 +23,14 @@ from ..paths import FRONTEND_DIR, MODELS_DIR
 from ..scenarios import scenarios_for
 from ..simulation import Scenario
 from ..supervisor import MODES, llm_status
+from . import guardian
 from .schemas import FlutterIn, ParamOverrides, SimulateIn
 
 log = logging.getLogger("flutter_ai.api")
 
 app = FastAPI(title="Flutter AI", version=__version__,
               description="Physics-based flutter simulation with neural and LLM-supervised control.")
+app.include_router(guardian.router)  # /api/guardian/*: fault-tolerant flights for the Guardian live view
 
 
 def _params(preset: str, overrides: ParamOverrides | None) -> WingParams:
@@ -139,5 +141,9 @@ if FRONTEND_DIR.exists():
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(FRONTEND_DIR / "index.html")
+
+    @app.get("/guardian", include_in_schema=False)
+    def guardian_page():
+        return FileResponse(FRONTEND_DIR / "guardian.html")
 
     app.mount("/", StaticFiles(directory=FRONTEND_DIR), name="frontend")

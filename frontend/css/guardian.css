@@ -1,0 +1,144 @@
+/* Guardian live view - components on top of app.css (tokens live there; see docs/Design.md §10). */
+
+code { font-size: 12px; background: var(--surface-2); padding: 0 4px; border-radius: 4px; }
+.tag {
+  display: inline-block; padding: 0 6px; border-radius: 999px; margin-left: 4px;
+  background: var(--surface-2); color: var(--ink-2);
+  font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; vertical-align: 1px;
+}
+.btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ghost-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.toggle { font-size: 12px; color: var(--ink-2); }
+.case-option code { font-size: 11px; }
+
+/* ---- progress ------------------------------------------------------------ */
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.progress-track { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: var(--ink); transition: width 0.3s; }
+
+/* ---- cockpit ------------------------------------------------------------- */
+.cockpit { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; }
+.cockpit-main { min-width: 0; }
+.g-viewport { height: 300px; }
+.instruments { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.inst { display: flex; flex-direction: column; gap: 3px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.inst:last-child { border-bottom: none; }
+.inst-label { font-size: 12px; color: var(--ink-2); }
+.inst-value { font-size: 17px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.inst-sub { font-size: 12px; color: var(--ink-2); }
+.inst-sub:empty { display: none; }
+.inst .status-cell svg { width: 16px; height: 16px; }
+.inst .meter i { height: 12px; }
+.level-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 2px; }
+.level-fill { height: 100%; width: 0; background: var(--ink-2); }
+
+/* mode timeline (ordinal ramp, same as the mode meter) */
+.timeline-wrap { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.timeline { position: relative; height: 16px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.timeline .seg { position: absolute; top: 0; bottom: 0; }
+.timeline .seg + .seg { border-left: 2px solid var(--surface); }
+.timeline .seg[data-level="1"] { background: var(--seq-1); }
+.timeline .seg[data-level="2"] { background: var(--seq-2); }
+.timeline .seg[data-level="3"] { background: var(--seq-3); }
+.timeline .seg[data-level="4"] { background: var(--seq-4); }
+.timeline .onset { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.7; }
+.timeline .fail { position: absolute; top: 0; bottom: 0; right: 0; background: var(--critical-wash); border-left: 2px solid var(--critical); }
+.timeline .playhead { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); box-shadow: 0 0 0 1px var(--surface); }
+.swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.swatch[data-level="1"] { background: var(--seq-1); }
+.swatch[data-level="2"] { background: var(--seq-2); }
+.swatch[data-level="3"] { background: var(--seq-3); }
+.swatch[data-level="4"] { background: var(--seq-4); }
+.swatch.onset-key { width: 2px; background: var(--ink); border-radius: 0; }
+
+/* ---- flutter margin: stat tiles + gauge ---------------------------------- */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); min-width: 0; }
+.kpi[hidden] { display: none; }
+.kpi-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.kpi-value { font-size: 22px; font-weight: 600; color: var(--ink); }
+.kpi-sub { font-size: 12px; color: var(--ink-2); }
+
+.gauge { position: relative; height: 96px; margin: 0 4px 6px; }
+.gauge .track { position: absolute; left: 0; right: 0; top: 30px; height: 12px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.gauge .band { position: absolute; top: 30px; height: 12px; background: var(--c-estimate); opacity: 0.25; }
+.gauge .mark { position: absolute; width: 3px; transform: translateX(-50%); border-radius: 2px; }
+.gauge .mark.est { top: 24px; height: 24px; background: var(--c-estimate); }
+.gauge .mark.truth { top: 26px; height: 20px; width: 2px; background: var(--muted); }
+.gauge .mark.healthy { top: 30px; height: 12px; width: 1px; background: var(--ink-2); }
+.gauge .speed-arrow {
+  position: absolute; top: 18px; width: 0; height: 0; transform: translateX(-50%);
+  border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 10px solid var(--ink);
+}
+.gauge .lbl { position: absolute; font-size: 12px; color: var(--ink); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.gauge .lbl.top { top: 0; }
+.gauge .lbl.row1 { top: 50px; }
+.gauge .lbl.row2 { top: 66px; }
+.gauge .lbl.muted { color: var(--ink-2); }
+.gauge .tick { position: absolute; top: 82px; font-size: 11px; color: var(--muted); transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.gauge .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+
+/* ---- traffic lights (per-mode predicted stability) ------------------------ */
+.lights { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+.light { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--page); min-width: 0; }
+.light.current { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.light-head { display: flex; align-items: center; gap: 6px; font-weight: 600; flex-wrap: wrap; }
+.light-sub { font-size: 12px; color: var(--ink-2); }
+.light .status-cell { font-size: 13px; font-weight: 600; }
+.light .status-cell svg { width: 16px; height: 16px; }
+.status-unknown { color: var(--ink-2); }
+.status-unknown svg { fill: var(--muted); }
+.light-num { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* ---- report + decision log ---------------------------------------------- */
+.g-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.report {
+  margin: 8px 0 0; padding: 10px 12px; max-height: 420px; overflow: auto;
+  background: var(--page); border: 1px solid var(--border); border-radius: 8px;
+  font: 12px/1.5 var(--font); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.report:focus-visible { outline: 2px solid var(--c-lqr); outline-offset: 2px; }
+.g-log { max-height: 480px; }
+.g-log li { grid-template-columns: 58px 112px 84px minmax(0, 1fr); align-items: start; }
+.g-log li.latest { background: var(--surface-2); border-radius: 6px; }
+.g-log .outcome { font-size: 12px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.g-log .outcome svg { width: 12px; height: 12px; fill: currentColor; }
+.g-log .outcome.blocked { color: var(--ink); }
+.g-log .why { grid-column: 4; }
+
+/* ---- diagnosis (optional) ------------------------------------------------ */
+.diag-rows { display: flex; flex-direction: column; gap: 6px; }
+.diag-row { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr) 56px; gap: 10px; align-items: center; font-size: 13px; }
+.diag-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.diag-bar i { display: block; height: 100%; background: var(--ink-2); }
+.diag-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.diag-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 8px 0 0; font-size: 13px; }
+.diag-kv dt { color: var(--ink-2); }
+.diag-kv dd { margin: 0; overflow-wrap: anywhere; }
+
+.g-summary td:last-child, .g-summary th:last-child { text-align: left; white-space: normal; }
+
+.is-loading .cockpit, .is-loading .gauge, .is-loading .lights, .is-loading .report, .is-loading .g-log,
+.is-loading .kpis { opacity: 0.45; transition: opacity 0.15s; }
+
+/* ---- responsive ---------------------------------------------------------- */
+@media (max-width: 1100px) {
+  .cockpit { grid-template-columns: minmax(0, 1fr); }
+  .instruments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+  .inst { border-bottom: none; }
+  .g-two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .topnav { order: 2; }
+  .g-viewport { height: 240px; }
+  .lights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g-log li { grid-template-columns: 52px minmax(0, 1fr); }
+  .g-log .mode-pill, .g-log .outcome { grid-column: 2; }
+  .g-log .why { grid-column: 1 / -1; }
+  .diag-row { grid-template-columns: minmax(0, 1fr) 56px; }
+  .diag-row .diag-bar { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 480px) {
+  .instruments { grid-template-columns: minmax(0, 1fr); }
+  .playback { flex-wrap: wrap; }
+}

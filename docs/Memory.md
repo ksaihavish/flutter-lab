@@ -40,7 +40,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 done (fair baselin
 | Paper prep | ✅ 2026-09-29 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
-| Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
+| Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics; no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
 | Dataset intake | ✅ format + `check-data` | No time-history dataset yet; spec in `data/README.md` |
 | BACT preset + validation | ✅ 2026-09-29 | Flutter freq 3.99 Hz vs ~4 Hz measured (−0.2 %); flutter q 183 vs ~148 psf (+24 %); NASA's model 150.8 psf. Neural policy `neural_policy_bact.npz` trained |
 | Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker |
@@ -248,6 +248,8 @@ LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
 | 2026-09-29 | Related work corrected from full texts: Papacharalampopoulos et al. 2026 **do** let the LLM choose the mode (with rule fallback and a dwell-time bound); Scott & Pado 2000 scheduled gains on the BACT wing | The draft said their LLM only wrote audit records; the novelty claim is now the plant, on-board latency and the evaluation, not the architecture pattern |
 | 2026-09-29 | Next research direction (owner): physics-informed advisor (on-board flutter-margin estimator) + time-scale map; ablations first (no latency, stronger model, history) | The LLM lost to rules; find out why before redesigning, and give the supervisor physics instead of symptoms |
 | 2026-09-29 | Margin estimator identifies pitch stiffness and flap effectiveness only; plunge stiffness held at its healthy value; estimates self-calibrated against the take-off fit; developed on seed 1000 | Plunge stiffness is not identifiable in closed loop (drifted +40 % on an unchanged wing); the unmeasured gust biases the fit; test seeds must stay untouched |
+| 2026-09-29 | **Guardian live view** = a background job (one daemon worker, POST → poll → full recording), then playback in the browser; identical requests reuse the recording; kept in memory only; uav_flap only; supervisors none / rules / rules + physics, **no LLM**; default seed 1000 (dev), onset ≥ 4.5 s; ground truth = `flutter_analysis`'s flutter speed computed root-only (a test pins equality), per fault level | A 30 s flight with the estimator costs ~0.5–2 min of CPU (12 s flight: 40 s on the busy machine), too slow for one request; streaming would need hooks inside `ft_simulate`, and recording through a supervisor wrapper leaves the benchmark code untouched and the flight identical. The GPU is busy and the view must never call a model. The FT study is calibrated for uav_flap (fault sizes, dwell time). The diagnostics calibrate on 0.5–4.5 s |
+| 2026-09-29 | Guardian colours: wing = active controller's entity colour (LQG / neural); on-board estimate = new token `--c-estimate` (slot 3 aqua) | Validator (all pairs, with LQG + neural): aqua passes light and dark; blue failed in dark next to the LQG violet (CVD ΔE 1.9); magenta, yellow, red and green failed next to orange |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
@@ -276,6 +278,10 @@ LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
   `nominal` in all other stiffness_loss flights, so the outcome is very probably unchanged; it is the only LLM
   fallback in 140 flights. Re-run `ft-benchmark` on a machine that cannot sleep to remove it entirely.
 - The Claude backend is untested against the live API (only with mocks).
+- Guardian view: not yet looked at in a real browser (no browser in the build session; the JS was exercised in Node
+  with a stub DOM against real recordings, and the pages/endpoints were fetched from a running server). Recordings
+  live in server memory only (lost on restart). No LLM supervisor there by design; adding one would need the call
+  budget and a busy-GPU guard. A 30 s physics-supervised flight takes minutes of CPU while experiments run.
 - The observer's aero-lag estimate lags about half a step; that is fine, but it is part of the loop.
 - `pytest` takes ~2 min (flutter sweeps); make the slow ones optional if needed.
 - Novelty (search 2026-09-29, full texts checked where openly available; `research/related-work.md`): neural

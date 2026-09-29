@@ -34,6 +34,7 @@ python -m flutter_ai serve
 | Command | What it does |
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
+| `http://127.0.0.1:8000/guardian` (same server) | Guardian live view: inject a mid-flight fault, fly it with no supervisor / rules / rules + physics, and play back the damaged wing, the on-board flutter-margin estimate (with the true value as a simulation-only toggle), per-mode predicted stability, the supervisor's report and every decision |
 | `start.bat -Test` / `python -m pytest` |  tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark (20 seeds, paired statistics) → `outputs/uav_flap/results.json` + figures (~2 min) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |

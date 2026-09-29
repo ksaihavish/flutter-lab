@@ -60,7 +60,8 @@ export class LineChart {
     this.canvas.addEventListener("pointerleave", () => this._onLeave());
   }
 
-  /** series: [{key, label, color (css var name), x: [], y: [], width?}] */
+  /** series: [{key, label, color (css var name), x: [], y: [], width?, band?: {lo: [], hi: []}}]
+   *  band: an uncertainty band drawn as a light fill of the series colour (e.g. an estimate ± 1σ). */
   setData(series, { hlines = [], vlines = [], xRange = null } = {}) {
     this.series = series.filter((s) => s.x && s.x.length);
     this.hlines = hlines;
@@ -82,6 +83,11 @@ export class LineChart {
         if (y === null || !Number.isFinite(y)) continue;
         xmin = Math.min(xmin, s.x[i]); xmax = Math.max(xmax, s.x[i]);
         ymin = Math.min(ymin, y); ymax = Math.max(ymax, y);
+        if (s.band) {
+          const lo = s.band.lo[i], hi = s.band.hi[i];
+          if (lo !== null && Number.isFinite(lo)) ymin = Math.min(ymin, lo);
+          if (hi !== null && Number.isFinite(hi)) ymax = Math.max(ymax, hi);
+        }
       }
     }
     for (const h of this.hlines) if (h.includeInRange !== false) { ymin = Math.min(ymin, h.y); ymax = Math.max(ymax, h.y); }
@@ -167,6 +173,7 @@ export class LineChart {
     // series
     ctx.lineJoin = "round"; ctx.lineCap = "round";
     for (const s of this.series) {
+      if (s.band) this._drawBand(ctx, s, X, Y);
       ctx.strokeStyle = cssVar(s.color);
       ctx.lineWidth = s.width || 2;
       ctx.beginPath();
@@ -206,6 +213,37 @@ export class LineChart {
     ctx.restore();
   }
 
+  _drawBand(ctx, s, X, Y) {
+    // fill each run of samples where both bounds exist; follows the step option like the line does
+    const ok = (v) => v !== null && v !== undefined && Number.isFinite(v);
+    const { lo, hi } = s.band;
+    const fillRun = (run) => {
+      if (run.length < 2) return;
+      ctx.beginPath();
+      run.forEach((i, k) => {
+        if (k === 0) ctx.moveTo(X(s.x[i]), Y(hi[i]));
+        else { if (this.opts.step) ctx.lineTo(X(s.x[i]), Y(hi[run[k - 1]])); ctx.lineTo(X(s.x[i]), Y(hi[i])); }
+      });
+      for (let k = run.length - 1; k >= 0; k--) {
+        const i = run[k];
+        ctx.lineTo(X(s.x[i]), Y(lo[i]));
+        if (this.opts.step && k > 0) ctx.lineTo(X(s.x[i]), Y(lo[run[k - 1]]));
+      }
+      ctx.closePath();
+      ctx.fill();
+    };
+    ctx.save();
+    ctx.fillStyle = cssVar(s.color);
+    ctx.globalAlpha = 0.18;
+    let run = [];
+    for (let i = 0; i < s.x.length; i++) {
+      if (ok(lo[i]) && ok(hi[i])) run.push(i);
+      else { fillRun(run); run = []; }
+    }
+    fillRun(run);
+    ctx.restore();
+  }
+
   _onMove(e) {
     if (!this._geom || !this.series.length) return;
     const { m, pw, b } = this._geom;
@@ -236,6 +274,9 @@ export class LineChart {
       const val = document.createElement("span");
       val.className = "tt-val";
       val.textContent = inRange ? fmt(s.y[i], this.opts.yFormat) : "ended";
+      if (inRange && s.band && Number.isFinite(s.band.hi[i]) && Number.isFinite(s.band.lo[i])) {
+        val.textContent += ` ± ${fmt((s.band.hi[i] - s.band.lo[i]) / 2, this.opts.yFormat)}`;
+      }
       const lab = document.createElement("span");
       lab.className = "tt-label";
       lab.textContent = s.label;

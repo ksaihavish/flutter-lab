@@ -22,6 +22,8 @@
   --c-lqr-rules: #1baf7a;
   --c-neural-rules: #eda100;
   --c-llm: #e87ba4;
+  /* Guardian view only: the on-board flutter-speed estimate (slot 3 aqua; validated all-pairs with LQG + neural) */
+  --c-estimate: #1baf7a;
   /* structural modes (flutter chart) */
   --c-mode1: #4a3aa7;
   --c-mode2: #008300;
@@ -61,6 +63,7 @@
     --c-lqr-rules: #199e70;
     --c-neural-rules: #c98500;
     --c-llm: #d55181;
+    --c-estimate: #199e70;
     --c-mode1: #9085e9;
     --c-mode2: #008300;
     --c-mode3: #c3c2b7;
@@ -91,6 +94,7 @@
   --c-lqr-rules: #199e70;
   --c-neural-rules: #c98500;
   --c-llm: #d55181;
+  --c-estimate: #199e70;
   --c-mode1: #9085e9;
   --c-mode2: #008300;
   --c-mode3: #c3c2b7;
@@ -131,6 +135,15 @@ h3 { font-size: 13px; color: var(--ink); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-mark { width: 28px; height: 28px; fill: var(--c-lqr); flex: none; }
 .subtitle { margin: 0; color: var(--ink-2); font-size: 12px; }
+/* page switcher (Simulator | Guardian) */
+.topnav { display: flex; gap: 4px; }
+.topnav a {
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink); text-decoration: none; font-size: 12px; white-space: nowrap;
+}
+.topnav a:hover { background: var(--surface-2); }
+.topnav a[aria-current="page"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.topnav a:focus-visible { outline: 2px solid var(--c-lqr); outline-offset: 2px; }
 .status-row { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;

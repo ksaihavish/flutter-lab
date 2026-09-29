@@ -17,7 +17,8 @@ function naca(split = null) {
   return { body: outline(0, split), flap: outline(split, 1) };
 }
 
-const MODE_LEVEL = { efficient: 1, balanced: 2, aggressive: 3, emergency: 4 };
+// Ordinal mode meters: effort modes (simulator) and fault-tolerant modes (Guardian view)
+const MODE_LEVEL = { efficient: 1, balanced: 2, aggressive: 3, emergency: 4, nominal: 1, robust: 2, cautious: 3, safe: 4 };
 
 function nearest(ts, t) {
   let lo = 0, hi = ts.length - 1;
@@ -59,7 +60,7 @@ export class Viewport {
       ctx.fillStyle = cssVar("--muted");
       ctx.font = `13px ${font}`;
       ctx.textAlign = "center";
-      ctx.fillText("Run a simulation to animate the wing", W / 2, H / 2);
+      ctx.fillText(this.emptyText || "Run a simulation to animate the wing", W / 2, H / 2);
       return;
     }
 

@@ -66,3 +66,21 @@ class FlutterIn(BaseModel):
     preset: str = "uav_flap"
     overrides: ParamOverrides | None = None
     validate_pk: bool = False
+
+
+class GuardianIn(BaseModel):
+    """One fault-tolerant mission for the Guardian live view (fault_tolerance/recording.py)."""
+
+    preset: str = "uav_flap"
+    fault: str = "stiffness_loss"  # one of fault_tolerance.faults.FAULTS
+    # None = the benchmark's value (faults.benchmark_fault). The onset must leave the diagnostics their healthy
+    # calibration window (0.5-4.5 s of flight).
+    onset: float | None = Field(None, ge=4.5, le=60)
+    ramp: float | None = Field(None, ge=0, le=30)
+    severity: float | None = Field(None, gt=0, le=3)
+    supervisor: Literal["none", "rules", "rules+physics"] = "rules+physics"
+    estimator: bool = True  # run the on-board flutter-margin estimator (required by rules+physics)
+    duration: float = Field(30.0, ge=6, le=60)
+    # 1000 is the development seed; the benchmark's test seeds are 0-19 (100-119 are kept fresh for the physics study)
+    seed: int = Field(1000, ge=0, le=2**32 - 1)
+    max_points: int = Field(3000, ge=200, le=20000)
