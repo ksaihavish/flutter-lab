@@ -1,7 +1,7 @@
 {
   "metadata": {
     "version": "0.3.0",
-    "generated_at": "2026-09-29T07:30:52+00:00",
+    "generated_at": "2026-09-29T08:00:44+00:00",
     "tuning_seeds": [
       1000,
       1001,
@@ -63,140 +63,140 @@
         "measurement_noise": 0.001,
         "failures": 3,
         "episodes": 40,
-        "mean_J": 0.8350379039632542
+        "mean_J": 0.8289313160078079
       },
       {
         "rate_multiplier": 1.0,
         "measurement_noise": 0.01,
-        "failures": 4,
+        "failures": 3,
         "episodes": 40,
-        "mean_J": 0.9000516936113103
+        "mean_J": 0.7907388785733344
       },
       {
         "rate_multiplier": 1.0,
         "measurement_noise": 0.03,
-        "failures": 4,
-        "episodes": 40,
-        "mean_J": 0.8202850493351936
-      },
-      {
-        "rate_multiplier": 1.0,
-        "measurement_noise": 0.1,
-        "failures": 4,
-        "episodes": 40,
-        "mean_J": 0.8451881721106869
-      },
-      {
-        "rate_multiplier": 3.0,
-        "measurement_noise": 0.001,
-        "failures": 3,
-        "episodes": 40,
-        "mean_J": 0.8147440840101509
-      },
-      {
-        "rate_multiplier": 3.0,
-        "measurement_noise": 0.01,
-        "failures": 3,
-        "episodes": 40,
-        "mean_J": 0.8439176021196236
-      },
-      {
-        "rate_multiplier": 3.0,
-        "measurement_noise": 0.03,
-        "failures": 4,
-        "episodes": 40,
-        "mean_J": 0.8291095581426787
-      },
-      {
-        "rate_multiplier": 3.0,
-        "measurement_noise": 0.1,
-        "failures": 4,
-        "episodes": 40,
-        "mean_J": 0.8610484580148978
-      },
-      {
-        "rate_multiplier": 10.0,
-        "measurement_noise": 0.001,
-        "failures": 1,
-        "episodes": 40,
-        "mean_J": 0.845247941733665
-      },
-      {
-        "rate_multiplier": 10.0,
-        "measurement_noise": 0.01,
         "failures": 2,
         "episodes": 40,
-        "mean_J": 0.898710120780501
+        "mean_J": 0.8623545474486577
+      },
+      {
+        "rate_multiplier": 1.0,
+        "measurement_noise": 0.1,
+        "failures": 2,
+        "episodes": 40,
+        "mean_J": 0.8895563485186454
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.001,
+        "failures": 3,
+        "episodes": 40,
+        "mean_J": 0.8045531243323307
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.01,
+        "failures": 1,
+        "episodes": 40,
+        "mean_J": 0.8683373823875846
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.03,
+        "failures": 1,
+        "episodes": 40,
+        "mean_J": 0.8929431454121578
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.1,
+        "failures": 3,
+        "episodes": 40,
+        "mean_J": 0.8828497727489469
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.001,
+        "failures": 1,
+        "episodes": 40,
+        "mean_J": 0.835300746608514
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.01,
+        "failures": 1,
+        "episodes": 40,
+        "mean_J": 0.8300152004034687
       },
       {
         "rate_multiplier": 10.0,
         "measurement_noise": 0.03,
-        "failures": 3,
+        "failures": 1,
         "episodes": 40,
-        "mean_J": 0.8475694487820087
+        "mean_J": 0.8903158215102104
       },
       {
         "rate_multiplier": 10.0,
         "measurement_noise": 0.1,
-        "failures": 4,
+        "failures": 2,
         "episodes": 40,
-        "mean_J": 0.8921140725542869
+        "mean_J": 0.9452020693650476
       },
       {
         "rate_multiplier": 30.0,
         "measurement_noise": 0.001,
         "failures": 1,
         "episodes": 40,
-        "mean_J": 0.8120280089300825
+        "mean_J": 0.8096887484405323
       },
       {
         "rate_multiplier": 30.0,
         "measurement_noise": 0.01,
         "failures": 1,
         "episodes": 40,
-        "mean_J": 0.8387281166344297
+        "mean_J": 0.8296915746864403
       },
       {
         "rate_multiplier": 30.0,
         "measurement_noise": 0.03,
-        "failures": 3,
+        "failures": 1,
         "episodes": 40,
-        "mean_J": 0.868434006151012
+        "mean_J": 0.9028256492250717
       },
       {
         "rate_multiplier": 30.0,
         "measurement_noise": 0.1,
-        "failures": 4,
+        "failures": 2,
         "episodes": 40,
-        "mean_J": 0.9608693860196187
+        "mean_J": 0.976630186078399
       },
       {
         "rate_multiplier": 100.0,
         "measurement_noise": 0.001,
         "failures": 0,
         "episodes": 40,
-        "mean_J": 0.8640359676830126
+        "mean_J": 0.8620579442075691
       },
       {
         "rate_multiplier": 100.0,
         "measurement_noise": 0.01,
         "failures": 0,
         "episodes": 40,
-        "mean_J": 0.9081115657780418
+        "mean_J": 0.8931686079093637
       },
       {
         "rate_multiplier": 100.0,
         "measurement_noise": 0.03,
         "failures": 1,
         "episodes": 40,
-        "mean_J": 0.9768357669508294
+        "mean_J": 0.9411493972529572
       },
       {
         "rate_multiplier": 100.0,
         "measurement_noise": 0.1,
-        "failures": 2,
+        "failures": 1,
         "episodes": 40,
-        "mean_J": 1.6563920378930588
+        "mean_J": 1.104434241672458
       }
     ]
   }

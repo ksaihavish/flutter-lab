@@ -1,111 +1,49 @@
-# Paper outline (corrected)
+# Paper outline (revised 2026-09-29)
 
-This replaces `legacy/docs/researchpaper_original.md`. That file's numbers were never
-produced by any code (see `audit-2026-09.md`).
+The draft itself is **generated**: `python -m flutter_ai paper` writes `paper-draft.md` from the result files, with
+the prose in `src/flutter_ai/paper.py`. This file explains the story, what each section must show, and what is still
+open. Rules: no hand-typed numbers (Rules.md §1); cite only what was opened (`references.bib`, `readstatus`).
 
-**Rule:** every number marked `⟨results.json: …⟩` must be copied from
-`outputs/results.json` after running `python -m flutter_ai evaluate` (or the Phase 4 LLM
-benchmark). Never type an estimate.
+## Working title
 
----
+*On-board language-model supervision for active flutter suppression: a fair benchmark with fault tolerance and a
+dwell-time guarantee.* Avoid "PINN" (the method is differentiable-simulation training) and avoid "first" unless a
+full literature search confirms it (related-work.md).
 
-## Working titles (pick after the Phase 4 results)
+## The story in five sentences
 
-- "Physics-Trained Neural Flutter Suppression with Language-Model Supervision"
-- "Can a Language Model Supervise an Active Flutter Suppression System? A Pareto Analysis"
-- "Differentiable-Simulation Neural Control and LLM Supervision for Aeroelastic Flutter"
+1. LLMs are proposed as supervisors of control loops, but their latency and unreliability clash with fast,
+   safety-critical dynamics; flutter suppression is a sharp test case.
+2. On a validated, realistic benchmark with fair baselines, a physics-trained neural policy beats plain LQR but not
+   a turbulence-aware LQG, and each controller has its own regime (robustness, delay, actuator limits).
+3. An on-board LLM supervising *effort modes* is useless: its seconds-long latency cannot act on sub-second gusts,
+   and the knob barely moves the trade-off (a clean negative result).
+4. Moved to *fault-tolerant supervision* (choosing among pre-verified modes after slow, persistent faults), the LLM
+   is evaluated against no, random, rule-based and oracle supervision, including held-out faults. **Result:** LLM 27 %, rules 48 %, oracle 100 % of faulty flights survived (LLM vs rules: exact McNemar p = 0.0026).
+5. The architecture (bounded modes, schema, fallback, one question at a time, controller bank, dwell time) makes the
+   LLM's worst case analysable: no sequence of answers can destabilise the nominal closed loop.
 
-Avoid "PINN" in the title unless a genuine physics-residual component is added (PRD §8).
+## Sections and what each must show
 
-## Abstract skeleton (150–250 words)
+| § | Content | Evidence (file) |
+|---|---|---|
+| 1 | Flutter, active suppression, learned control, LLM supervision; the gap; contributions | related-work.md |
+| 2 | Related work: neural flutter control (not novel; Scott & Pado scheduled gains on the same BACT wing), LLM supervision (Papacharalampopoulos 2026 already has an LLM choosing among pre-verified controllers with dwell-time switching, for process systems: claim the plant, on-board latency and evaluation, not the pattern), switching stability | references.bib, related-work.md |
+| 3 | Model, actuator realism, validation (p-k cross-check, BACT) | results.json `flutter`; validation/bact.json |
+| 4 | Controllers, shared cost, fairness (tuned knobs on disjoint seeds) | classical_tuning_*.json |
+| 5 | Supervisory architecture + dwell-time guarantee | ft_stability.json |
+| 6 | Experimental protocol (scenarios, seeds, statistics) | results.json `metadata` |
+| 7.1–7.3 | Controller comparison, robustness, ablations | results.json, robustness.json, ablations.json |
+| 7.4 | LLM with effort modes (negative) | llm_benchmark.json |
+| 7.5 | Fault-tolerant supervision (headline) | ft_benchmark.json |
+| 8–10 | Discussion, limitations, conclusion | prose in paper.py; write §8 fault-tolerance bullet and §10 after reading 7.5 |
 
-Problem (flutter, envelope extension) → gap (fixed-gain controllers, saturation, opaque
-adaptation) → method (validated 2-DOF Theodorsen/Wagner model; neural policy trained by
-differentiable simulation; LLM supervisor choosing among bounded modes from text
-situation reports) → results (neural vs LQR ⟨results.json⟩; supervisor on/under the
-Pareto front ⟨results.json⟩; LLM latency and fallback ⟨LLM benchmark⟩) → significance
-(safe architecture for LLMs in control: slow loop, bounded action space, measured value).
+## Figures (copied to `figures/` by the generator)
 
-## 1. Introduction
-1. Flutter and active flutter suppression. Cite classic sources and wind-tunnel
-   programmes you have actually read.
-2. Limits of fixed-gain designs under saturation and changing conditions.
-3. Learned controllers: promise and trust problems.
-4. LLMs as supervisory agents: interpretability versus latency and reliability.
-5. Contributions (only what the results support):
-   - a validated, open benchmark (physics tests, p-k cross-check);
-   - a physics-trained neural policy with zero-force equilibrium and rate penalty;
-     comparison vs LQR (and vs LQG/H∞ after Phase 4.2);
-   - a safe supervisory architecture plus a **Pareto test** for whether adaptation adds value;
-   - an open-source implementation and interactive simulator.
+V-g diagrams (uav_flap, BACT); a turbulence time history; the effort–response trade-off with supervised points;
+delay robustness; the robustness panel; training curves; LLM latency + trade-off; fault-tolerant survival and
+mission cost.
 
-## 2. Background and related work
-- Theodorsen / Wagner / Jones aerodynamics; flutter mechanism (mode coalescence).
-- Active flutter suppression (LQR/LQG, H∞, gain scheduling, adaptive control).
-- Learning-based control and differentiable simulation.
-- LLMs for control and robotics: do the literature search (Phase 4.7) before writing
-  this section.
+## Open items before submission
 
-## 3. System model
-- 3-DOF typical section with a servo-driven trailing-edge flap: EOM and Theodorsen flap
-  aerodynamics (Architecture.md §2); state space; ZOH discretisation; 5 ms loop delay.
-- Parameters: table from `results.json → params`.
-- **Experimental validation: NASA BACT wind-tunnel model** ⟨outputs/validation/bact.json⟩: predicted vs measured
-  flutter frequency and dynamic pressure; discuss the compressibility gap (Mach 0.77) and the aerodynamic-centre sensitivity.
-- Validation: Hodges & Pierce benchmark; flap loads vs thin-airfoil theory; state-space vs p-k flutter speed
-  ⟨results.json: flutter.state_space, flutter.pk_exact_theodorsen⟩. Figure 1 =
-  `fig1_flutter_vg.png`.
-
-## 4. Controllers
-- Actuators and limits; sensors; aero-lag observer.
-- LQR: discrete DARE; Bryson weights; aggressiveness → effort weight 10^(1−2a).
-- Neural policy: architecture u = u_max·tanh(g(x) − g(0)); training (imitation →
-  differentiable-physics fine-tuning with log(1+J), rate penalty, domain randomisation,
-  best-checkpoint on held-out episodes); validation vs LQR ⟨models/neural_policy.npz
-  meta.validation, meta.lqr_validation⟩. Figure = `fig*_training.png`.
-
-## 5. Supervisory layer
-- Situation features and report text (show one example report).
-- Action space (four modes) and why forces are never exposed to the LLM.
-- Rule baseline; Claude backend (structured output, fallback, call budget, latency).
-
-## 6. Experiments
-- Scenarios (`scenarios.py`) with the rationale for each.
-- Metrics (`metrics.py`): peak, RMS, settling, effort, control rate, saturation, failures.
-- Seeds and statistics.
-
-## 7. Results
-- Table: all cases × scenarios ⟨results.json: scenarios.*.cases⟩ (mean ± std).
-- Velocity sweep (stability envelope) ⟨results.json: velocity_sweep⟩.
-- **Delay robustness** ⟨results.json: delay_sweep⟩: neural vs LQR fixed for 5 ms vs LQR told the true delay.
-- **Pareto trade-off (key figure)** ⟨results.json: tradeoff⟩: fixed-aggressiveness curves
-  versus supervised points. State plainly whether each supervisor lies above, on or below
-  the curve.
-- LLM: latency distribution, fallback rate, cost, examples of reasoning.
-
-## 8. Discussion
-- Why the neural policy wins where it wins (saturation, turbulence statistics seen in
-  training). Fairness caveats: LQR had no disturbance model, which is why LQG is needed.
-- What the supervisor is good for (interpretability, operator trust) versus what it is
-  not (raw performance, if the Pareto test is negative).
-- Limitations: 2-DOF linear model, generalised-force actuation (until Phase 4.6),
-  simulation only, Wagner gust approximation.
-
-## 9. Conclusion and future work
-Phase 7 items: experimental validation, nonlinear LCO, stability certificates, HIL.
-
-## Reproducibility statement
-Commit hash, `python -m flutter_ai evaluate`, the `results.json` metadata block, and the
-policy metadata.
-
-## References (verified so far; add only papers you have opened)
-- Theodorsen, T. (1935). *General theory of aerodynamic instability and the mechanism of
-  flutter.* NACA Report 496.
-- Fung, Y.C. (1955/2008). *An Introduction to the Theory of Aeroelasticity.* Dover.
-- Hodges, D.H., Pierce, G.A. (2011). *Introduction to Structural Dynamics and
-  Aeroelasticity*, 2nd ed. Cambridge University Press.
-- Jones, R.T. (1938). *Operational treatment of the nonuniform-lift theory in airplane
-  dynamics.* NACA Report 667. Source of the two-lag Wagner approximation; **check the
-  report number and year against the NASA Technical Reports Server before citing.**
-- Raissi, M., Perdikaris, P., Karniadakis, G.E. (2019). Physics-informed neural networks.
-  *J. Comput. Phys.* 378, 686–707. (Cite only if you keep a PINN discussion.)
+See `submission-checklist.md`.

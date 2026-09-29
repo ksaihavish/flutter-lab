@@ -30,8 +30,8 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-from .modes import MODES, Decision, make_decision
-from .report import SituationFeatures, format_report
+from .modes import MODES, make_decision
+from .report import format_report
 from .rules import RuleSupervisor
 
 log = logging.getLogger(__name__)
@@ -117,7 +117,13 @@ def llm_status() -> dict:
 
 
 class LLMSupervisor:
-    """Backend-independent safety wrapper. Subclasses implement _complete(report) -> JSON text."""
+    """
+    Backend-independent safety wrapper. Subclasses implement _complete(report) -> JSON text.
+
+    The task is configurable (the fault-tolerant study uses its own modes, report and rules): `configure` sets the
+    system prompt, the enum of valid modes (enforced by the JSON schema and again in Python), the report formatter,
+    the decision constructor and the rule-based fallback. Defaults: the effort-mode supervisor.
+    """
 
     name = "llm"
     backend = ""
@@ -127,20 +133,36 @@ class LLMSupervisor:
         self.model = model or llm_model(self.backend)
         self.timeout_s = timeout_s or float(os.environ.get("FLUTTER_AI_LLM_TIMEOUT", "30"))
         self.max_calls = max_calls  # cost / run-time guard per simulation run
+        self.system_prompt = SYSTEM_PROMPT
+        self.schema: dict = RESPONSE_SCHEMA
+        self.valid_modes: tuple[str, ...] = tuple(MODES)
+        self.format: Callable = format_report
+        self.make: Callable = lambda f, mode, reasoning, source, latency: make_decision(
+            f.time, mode, reasoning, source=source, latency_s=latency)
         self.fallback = RuleSupervisor()
         self.calls = 0
         self.failures = 0
 
+    def configure(self, *, system_prompt: str, modes, format: Callable, make: Callable, fallback) -> "LLMSupervisor":
+        """Point the same safety wrapper at another task (another enum of modes, report and fallback)."""
+        self.system_prompt, self.valid_modes = system_prompt, tuple(modes)
+        props: dict = dict(RESPONSE_SCHEMA["properties"])  # type: ignore[call-overload]
+        props["mode"] = {"type": "string", "enum": list(modes)}
+        self.schema = {**RESPONSE_SCHEMA, "properties": props}
+        self.format, self.make, self.fallback = format, make, fallback
+        return self
+
     def reset(self) -> None:
-        self.fallback.reset()
+        if hasattr(self.fallback, "reset"):
+            self.fallback.reset()
         self.calls = 0
         self.failures = 0
 
     def _complete(self, report: str) -> str:
         raise NotImplementedError
 
-    def decide(self, f: SituationFeatures) -> Decision:
-        report = format_report(f)
+    def decide(self, f):
+        report = self.format(f)
         caught: tuple[type[BaseException], ...] = (*self.transport_errors, TimeoutError, ImportError, ValueError,
                                                    KeyError, StopIteration, TypeError)
         start = time.perf_counter()
@@ -154,9 +176,9 @@ class LLMSupervisor:
                 raise TimeoutError(f"answer took {latency:.1f} s (timeout {self.timeout_s:.0f} s)")
             data = json.loads(text)
             mode, reasoning = data["mode"], str(data["reasoning"]).strip()
-            if mode not in MODES:
+            if mode not in self.valid_modes:
                 raise ValueError(f"invalid mode {mode!r}")
-            return make_decision(f.time, mode, reasoning, source="llm", latency_s=latency)
+            return self.make(f, mode, reasoning, "llm", latency)
         except caught as exc:
             # A real system gives up at the timeout, so a timed-out call costs exactly timeout_s.
             latency = time.perf_counter() - start
@@ -204,10 +226,10 @@ class OllamaSupervisor(LLMSupervisor):
         return {
             "model": self.model,
             "stream": False,
-            "format": RESPONSE_SCHEMA,
+            "format": self.schema,
             "keep_alive": "10m",  # stay loaded between decisions (a cold load takes ~15 s)
             "options": {"temperature": 0, "num_ctx": 2048, **options},
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": report}],
+            "messages": [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": report}],
         }
 
     def _complete(self, report: str) -> str:
@@ -240,9 +262,9 @@ class ClaudeSupervisor(LLMSupervisor):
         response = self._get_client().beta.messages.create(
             model=self.model,
             max_tokens=2048,
-            system=SYSTEM_PROMPT,
+            system=self.system_prompt,
             messages=[{"role": "user", "content": report}],
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": RESPONSE_SCHEMA}},
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": self.schema}},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )

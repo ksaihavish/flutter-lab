@@ -3,7 +3,7 @@
 *The project's running state, so a new chat or AI tool can continue without re-reading the
 whole codebase. **Update this file at the end of every working session.***
 
-Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 in progress (4.2 LQG ✅, 4.4 statistics ✅, local LLM ✅); **next = the LLM's job (RQ2 redesign)**
+Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator); **next = the owner's paper items** (`research/submission-checklist.md`)
 
 ---
 
@@ -15,8 +15,8 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 in progress (4.2 L
 - **Repo:** https://github.com/ksaihavish/flutter-lab (renamed 2026-09-29 from Hybrid-PINN-LLM-...; old URL redirects).
 - **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
 - **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo (damping 0.56), ±15° command,
-  1-step (5 ms) loop delay.
-- **Run:** `start.bat` (web app) · `python -m pytest` (97 tests, ~2 min) ·
+  545 °/s slew-rate limit, 1-step (5 ms) loop delay; benchmark disturbances ×0.33.
+- **Run:** `start.bat` (web app) · `python -m pytest` ( tests, ~2 min) ·
   `python -m flutter_ai evaluate --preset uav_flap` (20 seeds, ~2 min).
 - **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
   deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
@@ -31,10 +31,12 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 in progress (4.2 L
 |---|---|---|
 | Physics (2-DOF + 3-DOF flap) | ✅ validated | See §3 |
 | Discrete, delay-aware LQR | ✅ | Designed for the loop delay (augmented state). Optimal for initial conditions, but amplifies gusts (no disturbance model) |
-| LQG (turbulence model) | ✅ 2026-09-29 | `controllers/lqg.py`: LQR on plant + AR(1) gust state, steady-state Kalman filter for aero-lag states and gust. **Best controller on both UAV wings** |
-| Neural policy `uav_flap` | ✅ **retrained 2026-09-29** (servo damping 0.05 → 0.56) | 64×64 tanh MLP; trained for delays 0–2, speeds 0.8–1.3 U_F, turbulence ≤ 1.5 m/s RMS; ~5 min |
+| LQG (turbulence model) | ✅ 2026-09-29 | `controllers/lqg.py`: LQR on plant + AR(1) gust state + shared rate penalty; Kalman filter for aero-lag states and gust, with the actuator's known slew limit in its input model. Knobs tuned per wing (`tune`). Best on J in most scenarios |
+| Neural policy `uav_flap` | ✅ **retrained 2026-09-29** (servo damping 0.56, 545 °/s slew limit, disturbances ×0.33) | 64×64 tanh MLP; delays 0–2, speeds 0.8–1.3 U_F, turbulence ≤ 0.5 m/s RMS; ~40 min on a busy CPU. Ablation variants in `models/ablations/` |
 | Neural policy `uav_section` | ✅ trained 2026-09-28 | Speeds 0.8–1.4 U_F, turbulence ≤ 2 m/s |
 | Rule supervisor | ✅ | Works; **adds no measurable value** (see §4) |
+| Fault-tolerant supervision | ✅ 2026-09-29 | `fault_tolerance/`: faults, diagnostics, bank, rules/random/oracle/LLM, `ft-benchmark`, `ft-stability`. Results in §4 (`outputs/uav_flap/ft_benchmark.json`, fig12) |
+| Paper prep | ✅ 2026-09-29 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies |
@@ -53,66 +55,144 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 in progress (4.2 L
 - Flap apparent-mass matrix is symmetric positive definite; a stiff hinge recovers the 2-DOF flutter speed.
 - Delay-margin analysis agrees with the simulator (a test checks this).
 
-## 4. Latest results (generated from `outputs/*/results.json`, 2026-09-29T05:00Z, 20 seeds)
+## 4. Latest results (generated from `outputs/*/results.json` and `robustness.json`, 2026-09-29, 20 seeds)
 
-Cells: RMS plunge h in mm (mean ± std over seeds) · mean cost J (the objective every controller minimises;
-lower is better; omitted when any run failed) · failures. Last column: neural relative to LQG over the seeds
-where both survived (positive = neural worse), with the larger of the two Wilcoxon p-values.
+Final Phase 4 setup: shared cost J with the rate penalty, realistic actuator (uav_flap 545 °/s, BACT 250 °/s),
+classical design knobs tuned on seeds disjoint from the test set, rate-aware LQG filter.
+Cells: RMS plunge h in mm (mean ± std) · mean cost J (lower is better; omitted if any run failed) · failures.
+Last column: neural relative to LQG over the seeds where both survived (positive = neural worse).
 
-**uav_flap** (generated 2026-09-29T05:00Z, 20 seeds). Flutter 46.40 m/s @ 10.43 Hz.
+**uav_flap** (generated 2026-09-29T07:56Z, 20 seeds). Flutter 46.40 m/s @ 10.43 Hz.
 
-| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h, J) |
+| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h / J) |
 |---|---|---|---|---|---|
-| Turbulence, 1.1 U_F | 25.18 ± 0.00 · **20/20 fail** | 7.10 ± 0.81 · **4/20 fail** | 3.71 ± 0.93 · **2/20 fail** | 6.10 ± 0.91 · **3/20 fail** | +72 % / +27 %, p ≤ 2e-05 |
-| Discrete gust, 1.1 U_F | 25.18 ± 2.08 · **20/20 fail** | 4.37 ± 0.73 · J 2.25 | 1.56 ± 0.24 · J 1.25 | 3.38 ± 0.58 · J 1.52 | +117 % / +21 %, p ≤ 2e-06 |
-| Gust, 1.3 U_F | 30.15 ± 4.17 · **20/20 fail** | 9.40 ± 1.81 · **19/20 fail** | 3.33 ± 0.55 · J 2.53 | 3.83 ± 2.29 · **2/20 fail** | -4 % / +48 %, p ≤ 1e-02 |
-| Gust, 0.9 U_F | 2.41 ± 0.29 · J 0.98 | 3.98 ± 0.57 · J 1.76 | 1.58 ± 0.22 · J 0.55 | 2.45 ± 0.38 · J 0.76 | +55 % / +38 %, p ≤ 2e-06 |
+| Turbulence, 1.1 U_F | 21.09 ± 0.00 · **20/20 fail** | 2.74 ± 0.32 · J 3.77 | 1.12 ± 0.10 · J 2.65 | 2.29 ± 0.23 · J 3.82 | +104 % / +44 % |
+| Discrete gust, 1.1 U_F | 20.31 ± 1.52 · **20/20 fail** | 1.70 ± 0.30 · J 0.343 | 0.63 ± 0.10 · J 0.129 | 1.30 ± 0.22 · J 0.203 | +106 % / +57 % |
+| Gust, 1.3 U_F | 26.67 ± 2.95 · **20/20 fail** | 0.48 ± 0.07 · J 0.852 | 0.99 ± 0.16 · J 0.32 | 0.72 ± 0.14 · J 0.513 | -28 % / +60 % |
+| Gust, 0.9 U_F | 0.79 ± 0.10 · J 0.107 | 1.48 ± 0.25 · J 0.25 | 0.62 ± 0.09 · J 0.0654 | 0.81 ± 0.12 · J 0.0827 | +31 % / +27 % |
 
-Delay tolerance (ms survived, discrete gust): lqr 30; lqg 30; neural 10; lqr_nominal 15; lqg_nominal 10
-Envelope (max U/U_F survived with gust): open_loop 1.00; lqr 1.25; lqg 1.50; neural 1.30
-Supervisor (turbulence, seed 7): lqr+rules 6.81 mm @ effort 2.43; neural+rules 6.21 mm @ effort 1.94 | fixed neural a=0: 6.04 @ 1.60; a=0.5: 6.14 @ 1.87
+Delay tolerance (ms, discrete gust): lqr 30; lqg 30; neural 15; lqr_nominal 10; lqg_nominal 10
 
-**uav_section** (generated 2026-09-29T05:00Z, 20 seeds). Flutter 49.22 m/s @ 10.91 Hz.
+Robustness, turbulence (failures of 20): | condition | lqr | lqg | neural |
+|---|---|---|---|
+| model error ±5 % | 2 | 1 | 1 |
+| model error ±10 % | 1 | 2 | 1 |
+| model error ±20 % | 9 | 0 | 7 |
+| sensor noise 0 % | 0 | 0 | 0 |
+| sensor noise 2 % | 1 | 2 | 0 |
+| sensor noise 5 % | 12 | 7 | 6 |
+| sensor noise 10 % | 20 | 18 | 20 |
+| slew limit none | 0 | 0 | 0 |
+| slew limit 500 | 3 | 1 | 0 |
+| slew limit 250 | 20 | 20 | 20 |
+| slew limit 125 | 20 | 20 | 20 |
 
-| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h, J) |
+**uav_section** (generated 2026-09-29T07:32Z, 20 seeds). Flutter 49.22 m/s @ 10.91 Hz.
+
+| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h / J) |
 |---|---|---|---|---|---|
-| Turbulence, 1.1 U_F | 18.45 ± 0.00 · **20/20 fail** | 8.11 ± 0.78 · J 14.23 | 3.95 ± 0.42 · J 5.04 | 6.36 ± 0.66 · J 8.42 | +61 % / +67 %, p ≤ 2e-06 |
-| Discrete gust, 1.1 U_F | 21.40 ± 2.69 · **20/20 fail** | 4.45 ± 0.68 · J 2.54 | 1.99 ± 0.32 · J 0.64 | 3.42 ± 0.55 · J 1.36 | +72 % / +113 %, p ≤ 2e-06 |
-| Gust, 1.3 U_F | 32.20 ± 4.87 · **20/20 fail** | 6.86 ± 1.97 · **1/20 fail** | 2.52 ± 0.65 · J 0.96 | 5.02 ± 0.85 · J 2.78 | +99 % / +189 %, p ≤ 2e-06 |
-| Gust, 0.9 U_F | 2.56 ± 0.35 · J 0.98 | 3.10 ± 0.47 · J 1.38 | 1.64 ± 0.23 · J 0.44 | 2.43 ± 0.37 · J 0.70 | +48 % / +59 %, p ≤ 2e-06 |
+| Turbulence, 1.1 U_F | 18.45 ± 0.00 · **20/20 fail** | 8.78 ± 0.81 · J 17 | 4.21 ± 0.42 · J 5.96 | 6.36 ± 0.66 · J 8.81 | +51 % / +48 % |
+| Discrete gust, 1.1 U_F | 21.40 ± 2.69 · **20/20 fail** | 4.77 ± 0.73 · J 2.83 | 2.11 ± 0.32 · J 0.664 | 3.42 ± 0.55 · J 1.37 | +63 % / +105 % |
+| Gust, 1.3 U_F | 32.20 ± 4.87 · **20/20 fail** | 6.95 ± 1.10 · J 5.66 | 2.58 ± 0.57 · J 0.973 | 5.02 ± 0.85 · J 2.82 | +94 % / +190 % |
+| Gust, 0.9 U_F | 2.56 ± 0.35 · J 0.985 | 3.33 ± 0.50 · J 1.57 | 1.70 ± 0.24 · J 0.455 | 2.43 ± 0.37 · J 0.708 | +43 % / +56 % |
 
-Delay tolerance (ms survived, discrete gust): lqr 30; lqg 30; neural 15; lqr_nominal 15; lqg_nominal 15
-Envelope (max U/U_F survived with gust): open_loop 1.00; lqr 1.35; lqg 1.50; neural 1.50
-Supervisor (turbulence, seed 7): lqr+rules 8.35 mm @ effort 3.79; neural+rules 6.74 mm @ effort 2.03 | fixed neural a=0: 7.45 @ 1.35; a=0.5: 6.90 @ 1.85
+Delay tolerance (ms, discrete gust): lqr 30; lqg 30; neural 15; lqr_nominal 15; lqg_nominal 15
 
-**bact** (generated 2026-09-29T05:01Z, 20 seeds). Flutter 135.67 m/s @ 3.99 Hz.
+Robustness, turbulence (failures of 20): | condition | lqr | lqg | neural |
+|---|---|---|---|
+| model error ±5 % | 0 | 0 | 0 |
+| model error ±10 % | 0 | 0 | 0 |
+| model error ±20 % | 7 | 0 | 1 |
+| sensor noise 0 % | 0 | 0 | 0 |
+| sensor noise 2 % | 0 | 0 | 0 |
+| sensor noise 5 % | 0 | 0 | 0 |
+| sensor noise 10 % | 0 | 0 | 0 |
 
-| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h, J) |
+**bact** (generated 2026-09-29T08:00Z, 20 seeds). Flutter 135.67 m/s @ 3.99 Hz.
+
+| Scenario | Open loop | LQR | LQG | Neural | Neural vs LQG (RMS h / J) |
 |---|---|---|---|---|---|
-| Turbulence, 1.1 U_F | 18.57 ± 0.00 · **20/20 fail** | 0.71 ± 0.15 · J 1.48 | 0.69 ± 0.15 · J 1.44 | 0.54 ± 0.13 · J 1.81 | -22 % / +26 %, p ≤ 3e-05 |
-| Discrete gust, 1.1 U_F | 18.38 ± 0.96 · **20/20 fail** | 0.49 ± 0.09 · J 0.48 | 0.48 ± 0.09 · J 0.48 | 0.40 ± 0.07 · J 0.59 | -17 % / +23 %, p ≤ 2e-06 |
-| Gust, 1.3 U_F | 18.55 ± 1.36 · **20/20 fail** | 0.65 ± 0.12 · J 1.02 | 0.65 ± 0.12 · J 1.02 | 0.43 ± 0.07 · J 1.42 | -34 % / +38 %, p ≤ 1e-03 |
-| Gust, 0.9 U_F | 1.79 ± 0.27 · J 2.66 | 0.47 ± 0.07 · J 0.36 | 0.42 ± 0.08 · J 0.35 | 0.38 ± 0.06 · J 0.39 | -9 % / +12 %, p ≤ 4e-05 |
+| Turbulence, 1.1 U_F | 18.57 ± 0.00 · **20/20 fail** | 1.11 ± 0.13 · J 1.95 | 0.78 ± 0.15 · J 1.53 | 0.89 ± 1.38 · **1/20 fail** | -24 % / +37 % |
+| Discrete gust, 1.1 U_F | 18.38 ± 0.96 · **20/20 fail** | 0.79 ± 0.09 · J 0.626 | 0.59 ± 0.11 · J 0.523 | 0.45 ± 0.07 · J 0.72 | -24 % / +37 % |
+| Gust, 1.3 U_F | 18.55 ± 1.36 · **20/20 fail** | 0.79 ± 0.11 · J 1.13 | 0.74 ± 0.12 · J 1.11 | 0.46 ± 0.08 · J 1.84 | -38 % / +66 % |
+| Gust, 0.9 U_F | 1.79 ± 0.27 · J 2.66 | 0.75 ± 0.08 · J 0.496 | 0.52 ± 0.09 · J 0.377 | 0.42 ± 0.06 · J 0.428 | -20 % / +13 % |
 
-Delay tolerance (ms survived, discrete gust): lqr 30; lqg 30; neural 30; lqr_nominal 30; lqg_nominal 30
-Envelope (max U/U_F survived with gust): open_loop 1.00; lqr 1.50; lqg 1.50; neural 1.50
-Supervisor (turbulence, seed 7): lqr+rules 1.20 mm @ effort 0.77; neural+rules 0.97 mm @ effort 1.21 | fixed neural a=0: 1.41 @ 0.49; a=0.5: 0.96 @ 1.24
+Delay tolerance (ms, discrete gust): lqr 30; lqg 30; neural 15; lqr_nominal 20; lqg_nominal 20
 
+Robustness, turbulence (failures of 20): | condition | lqr | lqg | neural |
+|---|---|---|---|
+| model error ±5 % | 0 | 0 | 1 |
+| model error ±10 % | 0 | 0 | 0 |
+| model error ±20 % | 1 | 1 | 2 |
+| sensor noise 0 % | 0 | 0 | 1 |
+| sensor noise 2 % | 0 | 0 | 2 |
+| sensor noise 5 % | 0 | 0 | 2 |
+| sensor noise 10 % | 1 | 2 | 2 |
+| slew limit none | 0 | 0 | 0 |
+| slew limit 500 | 0 | 0 | 0 |
+| slew limit 250 | 0 | 0 | 1 |
+| slew limit 125 | 20 | 20 | 20 |
 
 **What the numbers say**
-- **RQ1 is answered *no* against a fair baseline.** LQG beats the neural policy on J in every scenario on all
-  three wings (by 12–189 %). Neural beats plain LQR only because LQR has no disturbance model. On BACT, neural has
-  lower RMS h but pays with more flap effort; at equal effort (trade-off sweep) it ties LQG.
-- Why: the neural policy is memoryless (state estimate + last command) and cannot infer the gust; LQG's Kalman
-  filter estimates it (correlation with the true gust 0.92) and feeds it forward.
-- Stress tests (scratch script, uav_flap turbulence): LQG stays best with sensor noise up to 10 % of the reference
-  scales (3.56 → 4.03 mm vs neural 6.14 → 6.29) and under model mismatch (f_alpha +10 %, f_h −10 %, mass +15 %,
-  x_alpha +25 %); every controller fails for f_alpha −10 % and for a 30 % slower servo.
-- **Supervisor (RQ2): still no value.** Rule-supervised points sit on the fixed-setting curve; for neural,
-  fixed "efficient" beats supervision. Paired effects are ≤ ±4 % on the UAV wings (significant but tiny) and
-  +9 to +25 % *worse* on BACT.
-- uav_flap turbulence at 1.1 U_F is at the edge of the flap's authority: with 20 seeds every controller fails some
-  realisations (LQG 2, neural 3, LQR 4 of 20). From 1.2 U_F, 1.5 m/s turbulence defeats every controller.
+- **Neural vs LQG (RQ1): no.** Against the tuned, turbulence-aware LQG, the neural policy has a higher cost J in
+  every scenario on every wing. On BACT and in uav_flap's 1.3 U_F gust it has lower RMS h, bought with more effort.
+- **Neural vs plain LQR: yes, mostly** (uav_flap: lower J in 3 of 4 scenarios). The claim that survives is
+  "a physics-trained policy beats plain LQR", not "beats classical control".
+- **Each controller has a regime:** LQG in nominal conditions and under model error (0/20 failures at ±20 %);
+  neural under loop delay (fixed designs: neural 15 ms, LQG and LQR 10 ms) and under a 500 °/s slew limit
+  (0 failures vs 1 and 3); at 5 % sensor noise neural and LQG are close (6 vs 7 failures of 20). At ≤ 250 °/s no
+  controller survives uav_flap turbulence: only slowing down helps. This motivates fault-tolerant supervision.
+- **Supervisor with effort modes (RQ2): no value** (rule-supervised points on the fixed-setting curve).
+- LQR still amplifies the gust response below flutter on uav_flap (J 0.25 vs open loop 0.107): its weakness is
+  the missing disturbance model, which LQG fixes.
+
+### Fault-tolerant supervision (uav_flap)
+
+**Fault-tolerant supervision, uav_flap** (generated 2026-09-29T10:39:45+00:00, 20 seeds, 30 s flights at 1.1 U_F cruise, fault onset 6 s, 5 s ramp; LLM `llama3.1:8b`).
+Cells: survival (share of seeds without flutter) · mean time spent slowed down over surviving flights (s). Held-out faults (†) are in neither the rules nor the LLM's guidance.
+
+| Fault | Oracle mode | oracle | none | rules | random | llm |
+|---|---|---|---|---|---|---|
+| none | nominal | 100 % · 0.0 | 100 % · 0.0 | 100 % · 2.8 | 100 % · 11.7 | 100 % · 0.0 |
+| servo_slew | cautious, robust | 100 % · 21.6 | 0 % · – | 5 % · 15.5 | 15 % · 13.1 | 0 % · – |
+| stiffness_loss | nominal | 100 % · 0.0 | 100 % · 0.0 | 0 % · – | 0 % · – | 100 % · 0.0 |
+| sensor_noise | cautious, nominal | 100 % · 19.3 | 15 % · 0.0 | 100 % · 22.3 | 0 % · – | 50 % · 11.3 |
+| turbulence_rise | cautious, robust | 100 % · 14.8 | 0 % · – | 70 % · 18.2 | 55 % · 11.7 | 10 % · 9.6 |
+| loop_delay † | cautious, robust | 100 % · 20.5 | 0 % · – | 100 % · 21.8 | 0 % · – | 0 % · – |
+| flap_effectiveness † | cautious | 100 % · 22.8 | 0 % · – | 10 % · 17.9 | 15 % · 12.9 | 0 % · – |
+| **all faulty** | | **100 %** · 16.5 | **19 %** · 0.0 | **48 %** · 20.8 | **14 %** · 12.2 | **27 %** · 4.1 |
+
+Paired tests over all faulty flights (exact McNemar on survival; Wilcoxon on time slowed):
+
+| Pair | Survived only first | Survived only second | McNemar p | Δ slowed, both survived (s) | Wilcoxon p |
+|---|---|---|---|---|---|
+| llm vs rules | 20 | 45 | 0.003 | -10.7 | < 0.001 |
+| llm vs none | 9 | 0 | 0.004 | +1.4 | 0.109 |
+| rules vs none | 54 | 20 | < 0.001 | +22.3 | 0.250 |
+| llm vs random | 31 | 16 | 0.040 | -3.8 | 1.000 |
+| rules vs random | 45 | 5 | < 0.001 | +5.5 | < 0.001 |
+
+Fixed modes (no supervisor; which response each fault needs), survival:
+
+| Fault | nominal | robust | cautious | safe |
+|---|---|---|---|---|
+| none | 100 % | 100 % | 100 % | 100 % |
+| servo_slew | 0 % | 5 % | 100 % | 100 % |
+| stiffness_loss | 100 % | 0 % | 0 % | 70 % |
+| sensor_noise | 15 % | 0 % | 100 % | 100 % |
+| turbulence_rise | 0 % | 35 % | 100 % | 100 % |
+| loop_delay | 0 % | 10 % | 100 % | 100 % |
+| flap_effectiveness | 0 % | 0 % | 100 % | 100 % |
+
+LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
+
+**What the numbers say** (generated by `paper._ft_discussion` from `ft_benchmark.json`)
+- **LLM vs rules.** Pooled over faulty flights the LLM survived 27 % and the rules 48 % (significant, exact McNemar p = 0.0026). The LLM did better on stiffness_loss and worse on servo_slew, sensor_noise, turbulence_rise, loop_delay, flap_effectiveness.
+- **Held-out faults** (in neither the rules nor the guidance): loop_delay: LLM 0 %, rules 100 %, oracle 100 %; flap_effectiveness: LLM 0 %, rules 10 %, oracle 100 %. They test different things: the loop delay appears as a number in the report (a flight computer times its own loop), so it tests acting on an explicit indicator nobody wrote a rule for; flap damage shows only through its symptoms.
+- **False alarms** (time slowed down in fault-free flights): oracle 0.0 s, none 0.0 s, rules 2.8 s, random 11.7 s, llm 0.0 s.
+- **Gap to the oracle** (share of faulty flights the oracle saves but the supervisor loses): none 81 %, rules 52 %, random 86 %, llm 73 %.
+- **The structural-damage trap.** After stiffness loss, holding speed survived 100 % but a moderate slow-down only 0 %: the controllers are gain-scheduled for the healthy wing, which is below flutter at the lower speed while the damaged wing is not. A reflex of "anomaly, slow down a little" is wrong here.
+- **In one sentence:** Given slow faults and a menu of pre-verified modes, the same model did worse than hand-written rules (27 % vs 48 % of faulty flights survived), and both stayed below an oracle that knows the fault (100 %).
 
 ## 5. Decisions log (why things are the way they are)
 
@@ -153,17 +233,30 @@ Supervisor (turbulence, seed 7): lqr+rules 1.20 mm @ effort 0.77; neural+rules 0
 | 2026-09-29 | Identification: output error with **multiple shooting** (0.25 s segments from the measured state; lag states rebuilt with first-order hold, gust held per sample) | Replaying a whole run through a model above flutter amplifies CSV rounding exponentially |
 | 2026-09-29 | mypy on `src/` in CI (numpy stubs need python_version 3.12 for analysis; torch/scipy/matplotlib/anthropic not followed; pydantic plugin) | Phase 6.3; it caught ~80 issues, mostly unchecked `None` flutter speeds and flap hinges |
 | 2026-09-29 | Paper draft is generated (`python -m flutter_ai paper`), prose in `paper.py`, numbers from result files | Rules §1: no hand-typed numbers, even in drafts |
+| 2026-09-29 | Fault-tolerant study in its own package (`fault_tolerance/`) and simulator | The validated Phase 4 benchmark (`simulation.py`) stays untouched |
+| 2026-09-29 | Controller **bank with bumpless transfer**: all controllers run every step on the same measurements and applied-command history | Switching without transients; makes all modes share one state, which the stability proof needs |
+| 2026-09-29 | FT modes: nominal (LQG, cruise), robust (neural, cruise), cautious (LQG, 0.9 U_F), safe (LQG, 0.7 U_F) | Calibration: slowing down with neural/LQR failed after structural damage; 0.9 U_F is still above a damaged wing's flutter speed; neural was never uniquely right |
+| 2026-09-29 | Oracle = least disruptive surviving mode with hindsight (hold speed if possible, then the smallest slow-down) | Otherwise "always slow down" wins trivially; mission time matters |
+| 2026-09-29 | Diagnostics: nominal-model one-step residual per channel and high-frequency content vs a 4 s healthy baseline; pitch frequency from a 4 s Welch spectrum | Single 2 s FFTs wandered ±1.5 Hz and caused false alarms |
+| 2026-09-29 | Rules are written from the same principles as the LLM guidance and are **not** tuned on benchmark outcomes; held-out faults (loop delay, flap damage) are in neither | A fair rules-vs-LLM comparison |
+| 2026-09-29 | Minimum dwell between mode switches 7 s ≥ dwell-time bound 6.5 s (Hespanha & Morse; `ft-stability`, scaled state); a test enforces the inequality and checks the mode matrices reproduce the simulator | Guarantee: no sequence of supervisor answers destabilises the nominal closed loop (small-signal) |
+| 2026-09-29 | LLM supervisor is task-configurable (`LLMSupervisor.configure`: prompt, mode enum, report, decision, fallback) | One safety wrapper for effort modes and FT modes |
+| 2026-09-29 | After a code review, before any complete `ft-benchmark`: the 7 s dwell applies only to **controller** switches (LQG ↔ neural); an answer blocked by it is dropped and the supervisor asked again (never applied late) | The stability bound only concerns controller switches; the old rule delayed LQG-only escalation (cautious → safe) by 7 s and then applied a stale answer. The first run was stopped after 3 of 7 faults and is superseded (only its log lines were seen) |
+| 2026-09-29 | FT metrics: reaction = first mode change *decided after onset* that took effect; time slowed and cost J averaged over surviving flights; Wilcoxon on flights both survived; `ft_benchmark.json` rewritten after every fault | Old reaction counted pre-fault false alarms and "keep" answers; old time slowed rewarded failing early; a stopped run lost everything |
+| 2026-09-29 | Diagnostics use the plant's quantised airspeed, the previous applied command at the window start, and skip the first 0.5 s of residuals; random supervisor seeded independently of the flight | Review findings (< 0.25 % model mismatch; start-of-window transient); cleanliness |
+| 2026-09-29 | Related work corrected from full texts: Papacharalampopoulos et al. 2026 **do** let the LLM choose the mode (with rule fallback and a dwell-time bound); Scott & Pado 2000 scheduled gains on the BACT wing | The draft said their LLM only wrote audit records; the novelty claim is now the plant, on-board latency and the evaluation, not the architecture pattern |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
 - Gust entry uses the Wagner lag (not Küssner); the model is linear (no freeplay or LCO yet).
 - LQR's and LQG's optimism: in benchmarks they are re-designed for the true delay; fixed-design variants
   (`lqr_nominal`, `lqg_nominal`) are in the delay sweep. LQG designed for 5 ms tolerates 10 ms, like neural.
-- LQG and the neural policy both use a model identical to the simulator (except in the scratch mismatch check).
-  A robustness study with model error (Phase 4.3) is still needed before claiming anything about real hardware.
+- LQG and the neural policy are designed on a model identical to the nominal simulator. The robustness study
+  (`robustness`, §4) perturbs parameters by ±5/10/20 %, adds sensor noise and tightens the slew limit; that is
+  parametric uncertainty only (no unmodelled dynamics), so it still says nothing definite about real hardware.
 - The neural policy has no memory or gust estimate. Giving it the Kalman estimate (neural + filter) is the obvious
   way to test whether learning can beat LQG (e.g. under saturation); only worth doing if RQ1 stays in the paper.
-- Since the servo fix, the neural policy tolerates only 0–10 ms of delay on uav_flap (its training range).
+- Delay tolerance of fixed designs on uav_flap: neural 15 ms, LQR and LQG 10 ms (re-designed LQR/LQG: 30 ms).
 - The neural policy's aggressiveness input barely moves its trade-off, and "aggressive" is worse than "efficient"
   on both axes, so an effort-mode supervisor has almost nothing to choose between. RQ2 needs a different action space.
 - Local LLM (2026-09-29, Ollama `llama3.1:8b` Q4 on the RTX 4050, 6 GB, 19 % of the model on CPU): 72/72 valid schema
@@ -171,15 +264,21 @@ Supervisor (turbulence, seed 7): lqr+rules 1.20 mm @ effort 0.77; neural+rules 0
   "emergency" at 30–50 % of limit. Its decisions arrive ~4 s late, after the gust: an LLM cannot react to gusts.
   `llama3.2:3b` (100 % GPU): median 2.4 s / p95 2.9 s, but agrees with the rules only 15/72 (says "aggressive" 63/72,
   even in calm air): faster, much worse judgement. Live web-app run (8B, turbulence): answers at 3.7–4.6 s, three per
-  10 s run; the "aggressive" asked at 4.0 s landed at 8.5 s, after the turbulence ended at 7 s.
+  10 s run; the "aggressive" asked at 4.0 s landed at 8.5 s, after the turbulence ended at 7 s. The `llm-benchmark`
+  run (5 seeds, 79 decisions, busier machine) measured median 5.4 s / p95 9.7 s, 0 fallbacks, 68 % agreement with
+  the rules (`outputs/uav_flap/llm_benchmark.json`).
 - The Claude backend is untested against the live API (only with mocks).
 - The observer's aero-lag estimate lags about half a step; that is fine, but it is part of the loop.
 - `pytest` takes ~2 min (flutter sweeps); make the slow ones optional if needed.
-- Novelty (quick search 2026-09-29, not a full review): neural flutter control under input constraints with
-  wind-tunnel tests exists (Tang et al., J. Vib. Control 2020); NASA designed and tunnel-tested classical, **LQG**
-  and minimax flutter controllers on BACT (Mukhopadhyay, IFA 1999, NTRS 19990050943); "LLM as slow supervisor over a
-  fast certified inner loop" is surveyed (Du & Chan, arXiv 2609.16599); LLM fault-tolerant reconfiguration exists
-  for process plants (Vyas et al., arXiv 2606.31635). No LLM + flutter/aeroelastic work found. Not a PINN any more.
+- Novelty (search 2026-09-29, full texts checked where openly available; `research/related-work.md`): neural
+  flutter control under input constraints with wind-tunnel tests exists (Tang et al., J. Vib. Control 2021, online
+  2020); NASA tunnel-tested classical, **LQG** and minimax flutter controllers on BACT (Mukhopadhyay, IFA 1999) and a
+  neural gain scheduler on the same wing (Scott & Pado 2000); "LLM as slow supervisor over a fast inner loop" is
+  surveyed (Du & Chan, arXiv 2609.16599). **The architecture pattern is not new:** Papacharalampopoulos et al.
+  (Processes 2026) have an LLM select among pre-verified controllers with a rule fallback and a dwell-time bound, for
+  process systems (cloud model, once per fault, no latency model, no random/oracle baseline). No LLM + flutter /
+  aeroelastic work found. The claim is the plant, the on-board model with measured latency, and the evaluation.
+  Not a PINN any more.
 - Real data (search 2026-09-29): no openly downloadable flutter time histories found. BACT's test database and
   NASA's MATLAB simulation were distributed on request only (TM-97-206252). Usable: measured flutter points (in use),
   NASA's closed-loop boundary extension to the 200 psf tunnel limit (IFA 1999), measured tunnel turbulence spectra
@@ -189,14 +288,14 @@ Supervisor (turbulence, seed 7): lqr+rules 1.20 mm @ effort 0.77; neural+rules 0
 
 ## 7. Next steps (in order)
 
-1. **Decide the LLM's job (RQ2).** Effort modes cannot add value. Candidates: choosing among pre-verified inner-loop
-   controllers, fault handling (degrading flap/servo, sensor faults, stiffness loss), and airspeed / envelope advice,
-   evaluated against rules and an oracle, with the measured latency.
-2. **Stability guarantee** for the supervised switched system (each mode stable + dwell time), the open problem the
-   Du & Chan survey highlights.
-3. Improve BACT accuracy (compressibility; second flutter point, air Mach 0.38) and use TM-107734 for tunnel turbulence.
-4. Phase 4.3 robustness (model mismatch) and 4.5 ablations; decide whether RQ1 stays (neural + Kalman filter).
-5. Write the paper from `research/paper-outline.md`.
+1. The owner's items in `research/submission-checklist.md`: advisor review, venue, author list, library copies of
+   the four paywalled papers, read Papacharalampopoulos et al. 2026, edit the generated prose and write the closing
+   sentence of §10.
+2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
+   local model) to show the result is not specific to one model.
+3. Qualitative analysis of the LLM's reasoning (RQ4) from `ft_benchmark.json` → `decisions`.
+4. Improve BACT accuracy (compressibility; second flutter point) and use TM-107734 for tunnel turbulence.
+5. Measured time histories from a rig, then `identify` (parameters with uncertainty).
 
 ## 8. How to update this file
 

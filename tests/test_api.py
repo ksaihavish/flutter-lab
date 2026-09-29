@@ -58,7 +58,35 @@ def test_frontend_served():
 def test_paper_draft_is_generated_from_result_files(tmp_path):
     from flutter_ai.paper import build
 
-    path = build(tmp_path / "draft.md")
+    path = build(tmp_path / "draft.md", copy_figures=False)
     text = path.read_text(encoding="utf-8")
-    assert text.startswith("# Paper draft (generated)")
-    assert "## 3. Results" in text and "## 6. Language-model supervision" in text
+    assert text.startswith("# ") and "## Abstract" in text
+    assert "## 7. Results" in text and "### 7.5 Fault-tolerant supervision" in text and "## References" in text
+    assert "(Hespanha & Morse 1999)" in text or "ft_stability" not in text  # citations render as author-year
+
+
+def test_fault_tolerance_discussion_is_computed_from_results():
+    from flutter_ai.paper import _conclusion, _ft_discussion
+
+    def sup(surv, slowed=0.0):
+        return {"survival": surv, "slowed_s_mean": slowed}
+
+    def fault(held, llm, rules, oracle, fixed=None):
+        d = {"held_out": held, "supervisors": {"none": sup(0.0), "rules": sup(rules), "llm": sup(llm),
+                                               "oracle": sup(oracle)}}
+        if fixed:
+            d["fixed_modes"] = fixed
+        return d
+
+    ft = {"faults": {"none": fault(False, 1.0, 1.0, 1.0),
+                     "servo_slew": fault(False, 0.0, 0.0, 1.0),
+                     "stiffness_loss": fault(False, 1.0, 0.5, 1.0, {"nominal": sup(1.0), "cautious": sup(0.0)}),
+                     "loop_delay": fault(True, 1.0, 0.0, 1.0)},
+          "pooled_faulty": {"supervisors": {"none": sup(0.0), "rules": sup(1 / 6), "llm": sup(2 / 3), "oracle": sup(1.0)},
+                            "paired": {"llm vs rules": {"mcnemar_p": 0.03}}}}
+    text = "\n".join(_ft_discussion(ft))
+    assert "LLM survived 67 % and the rules 17 % (significant" in text
+    assert "structural-damage trap" in text and "servo_slew" in text  # nobody caught the servo fault
+    assert "loop_delay: LLM 100 %" in text
+    assert "did better than hand-written rules" in _conclusion(None, None, ft, None)
+    assert _ft_discussion(None)[0].startswith("- **Fault tolerance:** *[results pending")

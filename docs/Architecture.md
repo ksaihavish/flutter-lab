@@ -81,6 +81,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | `controllers/lqg.py` | LQG baseline: LQR on the plant augmented with an AR(1) gust state, steady-state Kalman filter (aero-lag states + gust) replacing the observer |
 | `controllers/neural.py` | Policy file format, NumPy inference, `linearize()`; one policy per preset |
 | `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (one safety wrapper; backends `OllamaSupervisor` (local, default) and `ClaudeSupervisor`) |
+| `fault_tolerance/` | Fault-tolerant supervision study: `faults.py` (mid-flight faults), `diagnostics.py` (on-board model-consistency features + report), `simulate.py` (controller bank with bumpless transfer, gain scheduling, autopilot, faults, dwell time), `supervisors.py` (rules, random, oracle), `llm.py` (LLM configured for the FT modes), `benchmark.py`, `stability.py` (dwell-time bound) |
 | `simulation.py` | Closed-loop runner (`Scenario` → `SimResult`): delay queue, saturation, failure detection, supervisor scheduling |
 | `metrics.py` | Peak/RMS h, α, β; settling; gust recovery; effort; command rate; saturation; mode switches |
 | `scenarios.py` | Named benchmark scenarios; `scenarios_for(preset)` scales disturbances per rig (BACT ×0.25) |
@@ -125,7 +126,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | API | FastAPI + Pydantic v2 + Uvicorn | Typed validation; docs at `/docs` |
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
-| Tests | pytest + FastAPI TestClient | 97 tests |
+| Tests | pytest + FastAPI TestClient |  tests |
 | Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
 | Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 

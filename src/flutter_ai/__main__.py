@@ -8,6 +8,8 @@ Command-line interface.
     python -m flutter_ai robustness [--preset uav_flap]     model error, sensor noise, rate limit -> robustness.json
     python -m flutter_ai ablations [--preset uav_flap]      ablation study (train variants with train --variant)
     python -m flutter_ai llm-benchmark [--preset uav_flap]  LLM supervisor experiments (slow) -> llm_benchmark.json
+    python -m flutter_ai ft-benchmark [--preset uav_flap]   fault-tolerant supervision study -> ft_benchmark.json
+    python -m flutter_ai ft-stability [--preset uav_flap]   dwell-time bound for switching -> ft_stability.json
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
     python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
     python -m flutter_ai check-data <folder>                validate an experimental dataset
@@ -115,6 +117,21 @@ def _llm_benchmark(args) -> None:
     run_llm_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)))
 
 
+def _ft_benchmark(args) -> None:
+    from .fault_tolerance.benchmark import run_ft_benchmark
+    from .params import get_preset
+
+    sups = ("none", "rules", "random") + (() if args.no_llm else ("llm",))
+    run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)), supervisors=sups)
+
+
+def _ft_stability(args) -> None:
+    from .fault_tolerance.stability import run_stability
+    from .params import get_preset
+
+    run_stability(get_preset(args.preset))
+
+
 def _serve(args) -> None:
     import uvicorn
 
@@ -189,6 +206,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--seeds", type=int, default=20)
     sp = add("llm-benchmark", _llm_benchmark, "LLM supervisor experiments (slow; uses FLUTTER_AI_LLM_BACKEND)")
     sp.add_argument("--seeds", type=int, default=5)
+    sp = add("ft-benchmark", _ft_benchmark, "fault-tolerant supervision study (slow with the LLM)")
+    sp.add_argument("--seeds", type=int, default=20)
+    sp.add_argument("--no-llm", action="store_true", help="skip the LLM supervisor")
+    add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8000)

@@ -330,3 +330,31 @@ def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
     fig.savefig(path)
     plt.close(fig)
     return path
+
+
+FT_SUP_COLORS = {"none": "#898781", "random": "#c3c2b7", "rules": "#1baf7a", "llm": "#e87ba4", "oracle": "#0b0b0b"}
+
+
+def ft_figure(res: dict, path: Path) -> Path:
+    """Survival and mission cost (time slowed down) per fault and supervisor."""
+    faults = list(res["faults"])
+    sups = [s for s in ("none", "random", "rules", "llm", "oracle") if s in res["faults"][faults[0]]["supervisors"]]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True)
+    x = np.arange(len(faults))
+    w = 0.8 / len(sups)
+    for i, s in enumerate(sups):
+        surv = [100 * res["faults"][f]["supervisors"][s]["survival"] for f in faults]
+        slow = [np.nan if (v := res["faults"][f]["supervisors"][s]["slowed_s_mean"]) is None else v
+                for f in faults]  # surviving flights only; no bar if none survived
+        ax1.bar(x + (i - (len(sups) - 1) / 2) * w, surv, w * 0.9, color=FT_SUP_COLORS.get(s, INK2), label=s)
+        ax2.bar(x + (i - (len(sups) - 1) / 2) * w, slow, w * 0.9, color=FT_SUP_COLORS.get(s, INK2))
+    labels = [f + ("\n(held out)" if res["faults"][f]["held_out"] else "") for f in faults]
+    ax2.set_xticks(x, labels, fontsize=8)
+    ax1.set_ylabel("Flights survived (%)")
+    ax2.set_ylabel("Time slowed down (s)\n(surviving flights)")
+    ax1.set_title("Fault-tolerant supervision: survival (higher is better) and mission cost (lower is better)")
+    ax1.legend(ncol=len(sups), loc="lower left", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path

@@ -31,7 +31,7 @@ policy, a delay-robustness sweep, dataset format + `check-data`.
 
 ---
 
-## Phase 4: Make the paper publishable 🔄 (tooling done 2026-09-29; next = fault-tolerant LLM supervision)
+## Phase 4: Make the paper publishable 🟡 (all evidence done 2026-09-29, incl. fault-tolerant supervision; remaining: the owner's writing and review, 4.8)
 
 **Goal:** answer RQ1–RQ4 (`PRD.md`) with evidence a reviewer will accept.
 
@@ -46,7 +46,8 @@ policy, a delay-robustness sweep, dataset format + `check-data`.
 | 4.5 | ✅ `ablations` + `train --variant` (imitation only, no rate penalty, no airspeed; random supervisor). **Ablations.** Neural without fine-tuning (imitation only), without the rate penalty, without airspeed input; supervisor with random mode choice | Table showing what each component contributes |
 | 4.6 | ✅ Flap servo (3.5) + **slew-rate limit in plant and training** (uav_flap 545 °/s from a UAV servo datasheet; BACT 250 °/s NASA nominal). Remaining: values identified from data | Rate limit in the plant and in training |
 | 4.7 | ✅ `docs/research/related-work.md` (every entry opened; closest prior work identified). **Literature review and novelty check.** Search: "LLM controller tuning", "language model supervisory control", "differentiable simulation flutter", "neural network flutter suppression", "BACT / NATA wind tunnel" | Related-work section written; the "first" claim is removed or verified |
-| 4.8 | 🟡 `python -m flutter_ai paper` generates `paper-draft.md` from the result files; prose to finish after the fault-tolerant study. **Write the paper** from `docs/research/paper-outline.md`; every number cites `results.json` | Draft reviewed by your advisor |
+| 4.9 | ✅ 2026-09-29 **Fault-tolerant LLM supervision** (`research/fault-tolerant-plan.md`): faults, diagnostics, controller bank with bumpless transfer, rules / random / LLM / oracle supervisors, `ft-benchmark` (20 seeds, paired statistics), `ft-stability` (dwell-time bound 6.5 s ≤ enforced 7 s) | Survival and mission cost per fault, per supervisor; held-out faults reported separately; paper section generated |
+| 4.8 | 🟡 `python -m flutter_ai paper` generates `paper-draft.md` from the result files; every section generated, including §7.5, §8 and §10; the owner edits the wording and adds the closing sentence. **Write the paper** from `docs/research/paper-outline.md`; every number cites `results.json` | Draft reviewed by your advisor |
 
 **Starter prompt:** *"Read CLAUDE.md, docs/Memory.md and docs/Rules.md. Do Phase 4.2: add an
 LQG controller with a first-order turbulence model as a new Controller subclass, register
