@@ -11,6 +11,8 @@ Command-line interface.
     python -m flutter_ai ft-benchmark [--preset uav_flap]   fault-tolerant supervision study -> ft_benchmark.json
     python -m flutter_ai ft-timescale [--preset uav_flap]   latency x fault growth time map -> ft_timescale.json
     python -m flutter_ai ft-stability [--preset uav_flap]   dwell-time bound for switching -> ft_stability.json
+    python -m flutter_ai train-diagnoser [--preset uav_flap] learned fault diagnoser -> models/diagnoser_<preset>.npz
+    python -m flutter_ai eval-diagnoser [--preset uav_flap]  its evaluation -> diagnoser_eval.json + fig14
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
     python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
     python -m flutter_ai check-data <folder>                validate an experimental dataset
@@ -145,6 +147,20 @@ def _ft_stability(args) -> None:
     run_stability(get_preset(args.preset))
 
 
+def _train_diagnoser(args) -> None:
+    from .fault_tolerance.diagnoser_training import train_diagnoser
+    from .params import get_preset
+
+    train_diagnoser(get_preset(args.preset), workers=args.workers)
+
+
+def _eval_diagnoser(args) -> None:
+    from .fault_tolerance.diagnoser_eval import evaluate_diagnoser
+    from .params import get_preset
+
+    evaluate_diagnoser(get_preset(args.preset), workers=args.workers)
+
+
 def _serve(args) -> None:
     import uvicorn
 
@@ -232,6 +248,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--tag", default="", help="write ft_benchmark_<tag>.json instead of ft_benchmark.json")
     sp.add_argument("--first-seed", type=int, default=0, help="first seed (fresh test set: e.g. 100)")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
+    for name, fn, help_ in (("train-diagnoser", _train_diagnoser, "train the learned fault diagnoser (needs PyTorch)"),
+                            ("eval-diagnoser", _eval_diagnoser, "evaluate the learned fault diagnoser")):
+        sp = add(name, fn, help_)
+        sp.add_argument("--workers", type=int, default=4, help="parallel processes for simulating flights")
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8000)

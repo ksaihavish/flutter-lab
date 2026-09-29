@@ -4,6 +4,11 @@ Faults for the fault-tolerant supervision study (docs/research/fault-tolerant-pl
 A fault starts at `onset` [s] and grows linearly to full `severity` over `ramp` [s]. Plant faults change the wing's
 parameters (the simulator re-discretises in small quantised steps); the others corrupt sensors, the actuator or the
 loop timing. Held-out faults are described neither in the rule table nor in the LLM's guidance.
+
+Several faults can act at once (`CompositeFault`, each part with its own onset, ramp and severity): real failures
+cascade, and a diagnoser trained on single faults only would never have seen a combination. Every function below
+accepts a Fault or a CompositeFault; the effects of the parts combine (plant changes are applied in turn, sensor noise
+and turbulence gain add up, loop delays add up).
 """
 
 from __future__ import annotations
@@ -48,12 +53,50 @@ FAULTS: dict[str, dict] = {
 }
 
 
+@dataclass(frozen=True)
+class CompositeFault:
+    """Simultaneous faults, e.g. a slower servo in rising turbulence. Each kind at most once (labels are per kind)."""
+
+    faults: tuple[Fault, ...]
+
+    def __post_init__(self) -> None:
+        kinds = [f.kind for f in self.faults]
+        if not kinds:
+            raise ValueError("A CompositeFault needs at least one fault")
+        if len(set(kinds)) != len(kinds):
+            raise ValueError(f"Each fault kind may appear once in a CompositeFault, got {kinds}")
+        unknown = [k for k in kinds if k not in FAULTS]
+        if unknown:
+            raise ValueError(f"Unknown fault kind(s) {unknown}; choose from {sorted(FAULTS)}")
+
+    @property
+    def kind(self) -> str:
+        return "+".join(f.kind for f in self.faults)
+
+    @property
+    def onset(self) -> float:
+        """The first part's onset (reaction times and 'after onset' metrics count from here)."""
+        return min(f.onset for f in self.faults)
+
+
+AnyFault = Fault | CompositeFault
+
+
+def components(fault: AnyFault) -> tuple[Fault, ...]:
+    """The single faults that make up `fault`."""
+    return fault.faults if isinstance(fault, CompositeFault) else (fault,)
+
+
 def benchmark_fault(kind: str, onset: float = 6.0, ramp: float = 5.0) -> Fault:
     return Fault(kind, onset=onset, ramp=ramp, severity=FAULTS[kind]["severity"])
 
 
-def plant_at(p: WingParams, fault: Fault, t: float) -> WingParams:
+def plant_at(p: WingParams, fault: AnyFault, t: float) -> WingParams:
     """True wing parameters at time t (the controllers keep their nominal design model)."""
+    if isinstance(fault, CompositeFault):
+        for part in fault.faults:  # the plant faults change different parameters, so the order does not matter
+            p = plant_at(p, part, t)
+        return p
     lv = fault.level(t)
     if lv == 0.0:
         return p
@@ -69,16 +112,16 @@ def plant_at(p: WingParams, fault: Fault, t: float) -> WingParams:
     return p
 
 
-def sensor_noise_at(fault: Fault, t: float, base: float = 0.0) -> float:
+def sensor_noise_at(fault: AnyFault, t: float, base: float = 0.0) -> float:
     """Measurement-noise std (fraction of the reference scales) at time t."""
-    return base + (0.08 * fault.level(t) if fault.kind == "sensor_noise" else 0.0)
+    return base + sum(0.08 * f.level(t) for f in components(fault) if f.kind == "sensor_noise")
 
 
-def gust_gain_at(fault: Fault, t: float) -> float:
+def gust_gain_at(fault: AnyFault, t: float) -> float:
     """Multiplier on the turbulence intensity at time t."""
-    return 1.0 + (fault.level(t) if fault.kind == "turbulence_rise" else 0.0)
+    return 1.0 + sum(f.level(t) for f in components(fault) if f.kind == "turbulence_rise")
 
 
-def delay_at(fault: Fault, t: float, nominal: int = 1) -> int:
+def delay_at(fault: AnyFault, t: float, nominal: int = 1) -> int:
     """Loop delay in samples at time t (5 ms samples)."""
-    return nominal + (int(round(2 * fault.level(t))) if fault.kind == "loop_delay" else 0)
+    return nominal + sum(int(round(2 * f.level(t))) for f in components(fault) if f.kind == "loop_delay")

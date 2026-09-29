@@ -42,6 +42,7 @@ class FTFeatures:
     noise_ratio: float  # high-frequency measurement content / healthy baseline
     loop_delay_ms: float  # measured by the flight computer
     margin: dict | None = None  # latest on-board flutter-margin estimate (margin.MarginEstimate.to_dict()), if any
+    diagnosis: dict | None = None  # latest learned fault diagnosis (diagnoser.FlightDiagnoser output), if any
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -158,7 +159,7 @@ MODEL CONSISTENCY (nominal model's one-step prediction error, per channel):
 - Measurement high-frequency content: x{f.noise_ratio:.1f} of healthy baseline ({_level(f.noise_ratio)})
 
 SYSTEM:
-- Control loop delay: {f.loop_delay_ms:.0f} ms""" + format_physics(f)
+- Control loop delay: {f.loop_delay_ms:.0f} ms""" + format_physics(f) + format_diagnosis(f)
 
 
 def format_physics(f: FTFeatures) -> str:
@@ -182,3 +183,21 @@ PHYSICS ESTIMATE (on-board identification of the wing, last {LOOKBACK_S:.0f} s, 
 - Estimated flutter speed: {flutter}
 - Predicted stability of each mode on the identified wing (worst case on the way to its airspeed): {modes}
 - Blind spots: this estimate cannot see actuator, sensor, loop-timing or turbulence problems."""
+
+
+def format_diagnosis(f: FTFeatures) -> str:
+    """The learned diagnoser's block of the report (only when it runs): what the fast model concluded, so that a
+    language model or a person can explain it. It states the model's numbers and its blind spot, nothing more."""
+    d = f.diagnosis
+    if not d:
+        return ""
+    probs = ", ".join(f"{k} {100 * v:.0f} %" + (" CONFIRMED" if k in d["confirmed"] else "")
+                      for k, v in d["probabilities"].items())
+    thr = "/".join(f"{x} %" for x in sorted({round(100 * v) for v in d["prob_threshold"].values()}))
+    unknown = "YES, the data match none of the known fault patterns" if d["unknown"] else "no"
+    return f"""
+
+LEARNED DIAGNOSIS (fast fault classifier, last {d['window_s']:g} s of data, at {d['time']:.1f} s):
+- Known faults, probability: {probs} (alarm threshold {thr}; confirmed = above it at consecutive diagnoses)
+- Unknown-fault score: {d['ood_score']:.2f} (alarm threshold {d['ood_threshold']:.2f}); unknown fault confirmed: {unknown}
+- Blind spots: trained in simulation on four fault types only; any other fault can at best be flagged as unknown."""
