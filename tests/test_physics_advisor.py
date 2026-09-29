@@ -102,3 +102,18 @@ def test_llm_physics_variant_gets_the_guidance_and_the_physics_fallback():
     assert "PHYSICS ESTIMATE" in sup.system_prompt and sup.system_prompt.rstrip().endswith("cite the report.")
     assert isinstance(sup.fallback, FTPhysicsRuleSupervisor)
     assert "PHYSICS ESTIMATE" not in make_ft_llm_supervisor("ollama").system_prompt
+
+
+def test_fixed_llm_latency_replaces_the_measured_one(wing):
+    p, Uf, fhz = wing
+
+    class FakeLLM:
+        name = "llm"
+
+        def decide(self, f):
+            return FTDecision(time=f.time, mode="safe", reasoning="x", source="llm", latency_s=0.2)
+
+    r = ft_simulate(p, Uf, fhz, benchmark_fault("none"), FakeLLM(), duration=10.0, seed=0, fixed_llm_latency_s=2.0)
+    t_switch, _, decided = r.switch_log[0]
+    assert t_switch - decided == pytest.approx(2.0, abs=0.01)
+    assert r.decisions[0].latency_s == 0.2  # the measured value is kept

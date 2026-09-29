@@ -121,7 +121,8 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                 forced_mode: tuple[float, str] | None = None, apply_latency: bool = True,
                 bank_factory: Callable[[], dict[str, Controller]] = make_bank,
                 x0: tuple[float, float] = (0.0, 0.0), margin_every_s: float | None = None,
-                diagnose_every_s: float | None = None, diagnoser=None) -> FTResult:
+                diagnose_every_s: float | None = None, diagnoser=None,
+                fixed_llm_latency_s: float | None = None) -> FTResult:
     """
     fault: a Fault or a CompositeFault (several at once).
     supervisor: object with decide(FTFeatures) -> FTDecision-like (mode, reasoning, source, latency_s) or None.
@@ -131,6 +132,8 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
         the supervisor's features (physics-informed supervisors). None = no estimator.
     diagnose_every_s: run the learned fault diagnoser (diagnoser.py) this often; the latest diagnosis is added to the
         supervisor's features. None = off. diagnoser: a DiagnoserModel (default: the trained one for this preset).
+    fixed_llm_latency_s: apply this latency to every LLM answer instead of its measured one (the measured value is
+        still recorded): makes an LLM run independent of how busy the machine is.
     Latency: every decision's latency_s is applied in simulation time (LLMs measure theirs; rule supervisors have 0
     unless wrapped in a Delayed supervisor for the time-scale study).
     """
@@ -246,7 +249,8 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                 feats.diagnosis = latest_diag
                 d = supervisor.decide(feats)
                 if d is not None:
-                    lag = d.latency_s if apply_latency else 0.0
+                    lag = (d.latency_s if fixed_llm_latency_s is None or not d.source.startswith("llm")
+                           else fixed_llm_latency_s) if apply_latency else 0.0
                     d.applied_at = tk + lag
                     decisions.append(d)
                     pending.append(d)

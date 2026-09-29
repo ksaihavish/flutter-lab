@@ -137,7 +137,8 @@ def _ft_benchmark(args) -> None:
         sups = tuple(s for s in sups if s != "llm")
     run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.first_seed, args.first_seed + args.seeds)),
                      supervisors=sups,
-                     apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag)
+                     apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag,
+                     llm_latency_s=args.llm_latency)
 
 
 def _ft_stability(args) -> None:
@@ -247,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--interval", type=float, default=0.25, help="seconds between supervisor questions")
     sp.add_argument("--tag", default="", help="write ft_benchmark_<tag>.json instead of ft_benchmark.json")
     sp.add_argument("--first-seed", type=int, default=0, help="first seed (fresh test set: e.g. 100)")
+    sp.add_argument("--llm-latency", type=float, default=None,
+                    help="apply this fixed latency [s] to LLM answers (measured latency still recorded)")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
     for name, fn, help_ in (("train-diagnoser", _train_diagnoser, "train the learned fault diagnoser (needs PyTorch)"),
                             ("eval-diagnoser", _eval_diagnoser, "evaluate the learned fault diagnoser")):

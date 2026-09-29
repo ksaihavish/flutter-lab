@@ -93,7 +93,8 @@ def _slow(x: float | None) -> str:
 
 def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none", "rules", "random", "llm"),
                      out_dir: Path | None = None, make_figure: bool = True, log=print, *, apply_latency: bool = True,
-                     supervisor_interval: float = 0.25, tag: str = "", faults: tuple[str, ...] | None = None) -> dict:
+                     supervisor_interval: float = 0.25, tag: str = "", faults: tuple[str, ...] | None = None,
+                     llm_latency_s: float | None = None) -> dict:
     """
     Ablations: apply_latency=False applies every answer at once (simulation time stops while the LLM thinks), which
     separates judgement from speed; supervisor_interval sets how often every supervisor is asked. A tag writes
@@ -119,6 +120,7 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
                               "llm": status if any(s.startswith("llm") for s in supervisors) else None,
                               "margin_every_s": MARGIN_EVERY_S,
                               "apply_latency": apply_latency, "supervisor_interval_s": supervisor_interval,
+                              "llm_latency_fixed_s": llm_latency_s,
                               "tag": tag,
                               "note": "Every value in this file is produced by flutter_ai.fault_tolerance.benchmark."},
                  "faults": {}}
@@ -143,7 +145,8 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
             for sup in supervisors:
                 r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s,
                                 apply_latency=apply_latency, supervisor_interval=supervisor_interval,
-                                margin_every_s=MARGIN_EVERY_S if sup.endswith("+physics") else None)
+                                margin_every_s=MARGIN_EVERY_S if sup.endswith("+physics") else None,
+                                fixed_llm_latency_s=llm_latency_s)
                 per.setdefault(sup, []).append({k: r.metrics[k] for k in KEEP})
                 if sup != "random":
                     decisions += [{"supervisor": sup, "seed": s, "time": d.time, "mode": d.mode, "source": d.source,
