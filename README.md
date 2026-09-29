@@ -34,7 +34,7 @@ python -m flutter_ai serve
 | Command | What it does |
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
-| `start.bat -Test` / `python -m pytest` |  tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `start.bat -Test` / `python -m pytest` | 110 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark (20 seeds, paired statistics) → `outputs/uav_flap/results.json` + figures (~2 min) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU); `--variant` trains ablations |

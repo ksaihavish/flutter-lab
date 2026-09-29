@@ -16,7 +16,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 done (fair baselin
 - **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
 - **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo (damping 0.56), ±15° command,
   545 °/s slew-rate limit, 1-step (5 ms) loop delay; benchmark disturbances ×0.33.
-- **Run:** `start.bat` (web app) · `python -m pytest` ( tests, ~2 min) ·
+- **Run:** `start.bat` (web app) · `python -m pytest` (110 tests, ~2 min) ·
   `python -m flutter_ai evaluate --preset uav_flap` (20 seeds, ~2 min).
 - **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
   deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
