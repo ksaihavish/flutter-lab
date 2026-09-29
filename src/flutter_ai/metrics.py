@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import numpy as np
 
+from .controllers.costs import input_weight, state_weight
 from .params import WingParams
 
 SETTLE_BAND_FRACTION = 0.02  # settled = within 2 % of the structural limits
+COST_AGGRESSIVENESS = 0.5  # effort weight used to score every run with the same J
 
 
 def _settling_time(t: np.ndarray, outside: np.ndarray) -> float | None:
@@ -46,6 +48,11 @@ def compute_metrics(result, params: WingParams, scenario) -> dict:
     du = np.diff(u_norm, axis=0)
     # RMS per-step change of the normalised command: high values = chatter / actuator wear
     rate_rms = float(np.sqrt(np.mean(np.sum(du**2, axis=1)))) if len(du) else 0.0
+    # The quadratic cost every controller is designed or trained to minimise (controllers/costs.py), with one
+    # fixed effort weight so runs are comparable. None for failed runs: a truncated run would score too well.
+    xq = x[:, :state_weight(params).shape[0]]
+    cost = float(dt * (np.einsum("ti,ij,tj->", xq, state_weight(params), xq)
+                       + np.einsum("ti,ij,tj->", u, input_weight(params, COST_AGGRESSIVENESS), u)))
     switches = sum(1 for a, b in zip(result.mode, result.mode[1:]) if a != b)
     llm_calls = sum(1 for d in result.decisions if d.source.startswith("llm"))
     llm_fallbacks = sum(1 for d in result.decisions if d.source == "llm_fallback")
@@ -61,6 +68,7 @@ def compute_metrics(result, params: WingParams, scenario) -> dict:
         "settling_time_s": settle,
         "gust_peak_h_mm": peak_h_gust,
         "gust_recovery_s": recovery,
+        "cost_J": None if result.exceeded_limits else cost,
         "control_energy": float(np.sum(u_norm**2) * dt),
         "peak_control_fraction": float(np.max(np.abs(u_norm))) if len(u_norm) else 0.0,
         "saturation_fraction": float(np.mean(np.any(np.abs(u_norm) >= 0.999, axis=1))) if len(u_norm) else 0.0,

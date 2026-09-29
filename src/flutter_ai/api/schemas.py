@@ -44,7 +44,7 @@ class ScenarioIn(BaseModel):
 
 
 class CaseIn(BaseModel):
-    controller: Literal["open_loop", "lqr", "neural"]
+    controller: Literal["open_loop", "lqr", "lqg", "neural"]
     supervisor: Literal["none", "rules", "llm"] = "none"
     aggressiveness: float | None = Field(None, ge=0, le=1)
 

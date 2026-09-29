@@ -20,6 +20,7 @@ from .paths import MODELS_DIR  # noqa: E402
 CASE_COLORS = {
     "open_loop": "#898781",
     "lqr": "#2a78d6",
+    "lqg": "#4a3aa7",
     "neural": "#eb6834",
     "lqr+rules": "#1baf7a",
     "neural+rules": "#eda100",
@@ -29,11 +30,12 @@ CASE_COLORS = {
 CASE_LABELS = {
     "open_loop": "Open loop",
     "lqr": "LQR",
+    "lqg": "LQG (turbulence model)",
     "neural": "Neural",
     "lqr+rules": "LQR + rule supervisor",
     "neural+rules": "Neural + rule supervisor",
-    "lqr+llm": "LQR + Claude supervisor",
-    "neural+llm": "Neural + Claude supervisor",
+    "lqr+llm": "LQR + LLM supervisor",
+    "neural+llm": "Neural + LLM supervisor",
 }
 MODE_COLORS = ("#4a3aa7", "#008300", "#52514e")  # structural modes: kept distinct from controller colours
 INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
@@ -133,7 +135,7 @@ def time_history_figure(results, p, title: str, path: Path) -> Path:
 
 def tradeoff_figure(tradeoff: dict, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    for ctrl in [c for c in ("lqr", "neural") if c in tradeoff]:
+    for ctrl in [c for c in ("lqr", "lqg", "neural") if c in tradeoff]:
         pts = tradeoff[ctrl]
         e = [q["control_energy"] for q in pts]
         r = [q["rms_h_mm"] for q in pts]
@@ -156,8 +158,8 @@ def tradeoff_figure(tradeoff: dict, path: Path) -> Path:
 def velocity_sweep_figure(sweep: dict, p, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4))
     lim = p.h_limit * 1000
-    for ctrl in ("open_loop", "lqr", "neural"):
-        rows = sweep.get(ctrl, [])
+    for ctrl in [c for c in ("open_loop", "lqr", "lqg", "neural") if c in sweep]:
+        rows = sweep[ctrl]
         r = np.array([q["ratio"] for q in rows])
         pk = np.array([min(q["peak_h_mm"], lim) for q in rows])
         fail = np.array([q["exceeded_limits"] for q in rows])
@@ -202,10 +204,12 @@ def delay_sweep_figure(sweep: dict, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4))
     dt_ms = sweep["dt"] * 1000
     labels = {"lqr": "LQR re-designed for the true delay (optimistic)", "lqr_nominal": "LQR designed for 5 ms, fixed",
+              "lqg": "LQG re-designed for the true delay (optimistic)", "lqg_nominal": "LQG designed for 5 ms, fixed",
               "neural": "Neural (one policy)"}
     styles = {"lqr": dict(color=CASE_COLORS["lqr"], alpha=0.45), "lqr_nominal": dict(color=CASE_COLORS["lqr"]),
+              "lqg": dict(color=CASE_COLORS["lqg"], alpha=0.45), "lqg_nominal": dict(color=CASE_COLORS["lqg"]),
               "neural": dict(color=CASE_COLORS["neural"])}
-    for ctrl in [c for c in ("lqr", "lqr_nominal", "neural") if c in sweep]:
+    for ctrl in [c for c in ("lqr", "lqr_nominal", "lqg", "lqg_nominal", "neural") if c in sweep]:
         rows = sweep[ctrl]
         d = np.array([r["delay_steps"] for r in rows]) * dt_ms
         rms = np.array([r["rms_h_mm"] for r in rows])

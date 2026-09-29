@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from flutter_ai.controllers import (
+    LQGController,
     LQRController,
     NeuralController,
     NeuralPolicy,
@@ -166,3 +167,39 @@ def test_metrics_have_no_nan():
     for k, v in r.metrics.items():
         if isinstance(v, float):
             assert np.isfinite(v), k
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_lqg_does_not_amplify_gusts_below_flutter(preset):
+    """Plain LQR amplifies the gust response below flutter; the turbulence-aware LQG must not."""
+    p, Uf = setup(preset)
+    sc = replace(SCENARIOS["below_flutter"]["scenario"], h0=0.0, alpha0_deg=0.0)
+    rms = {name: simulate(p, c, sc, Uf).metrics["rms_h_mm"]
+           for name, c in (("open", OpenLoop()), ("lqr", LQRController()), ("lqg", LQGController()))}
+    assert rms["lqg"] < rms["open"] < rms["lqr"]
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_lqg_survives_turbulence_above_flutter(preset):
+    # 1.1 U_F only: from 1.2 U_F, 1.5 m/s turbulence exceeds the uav_flap flap's authority for every controller
+    p, Uf = setup(preset)
+    r = simulate(p, LQGController(), SCENARIOS["turbulence_patch"]["scenario"], Uf)
+    assert not r.exceeded_limits
+
+
+def test_lqg_kalman_filter_tracks_the_gust():
+    p, Uf = setup("uav_flap")
+    ctrl = LQGController()
+    estimates = []
+    compute = ctrl.compute
+
+    def recording(t, x_hat):
+        u = compute(t, x_hat)
+        estimates.append(ctrl.gust_estimate)
+        return u
+
+    ctrl.compute = recording
+    r = simulate(p, ctrl, SCENARIOS["turbulence_patch"]["scenario"], Uf)
+    est = np.array(estimates)
+    active = r.w_gust != 0
+    assert np.corrcoef(est[active], r.w_gust[active])[0, 1] > 0.85

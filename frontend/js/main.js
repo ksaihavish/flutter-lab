@@ -6,10 +6,11 @@ import { Viewport } from "./viewport.js";
 const CASES = [
   { id: "open_loop", controller: "open_loop", supervisor: "none", label: "Open loop", color: "--c-open_loop", on: true, width: 1.5 },
   { id: "lqr", controller: "lqr", supervisor: "none", label: "LQR", color: "--c-lqr", on: true },
+  { id: "lqg", controller: "lqg", supervisor: "none", label: "LQG (turbulence model)", color: "--c-lqg", on: true },
   { id: "neural", controller: "neural", supervisor: "none", label: "Neural (physics-trained)", color: "--c-neural", on: true, needsNeural: true },
   { id: "lqr+rules", controller: "lqr", supervisor: "rules", label: "LQR + rule supervisor", color: "--c-lqr-rules", on: false },
   { id: "neural+rules", controller: "neural", supervisor: "rules", label: "Neural + rule supervisor", color: "--c-neural-rules", on: true, needsNeural: true },
-  { id: "neural+llm", controller: "neural", supervisor: "llm", label: "Neural + Claude supervisor", color: "--c-llm", on: false, needsNeural: true, needsLLM: true },
+  { id: "neural+llm", controller: "neural", supervisor: "llm", label: "Neural + LLM supervisor", color: "--c-llm", on: false, needsNeural: true, needsLLM: true },
 ];
 
 const SCENARIO_LABELS = {
@@ -82,8 +83,7 @@ function renderStatus() {
     chip(true, "Physics model"),
     chip(neural, neural ? "Neural policy" : "Neural policy not trained",
       neural ? "" : `Run: python -m flutter_ai train --preset ${preset}`),
-    chip(h.llm.api_key_set && h.llm.installed, h.llm.api_key_set ? `Claude (${h.llm.model})` : "Claude: no API key",
-      h.llm.api_key_set ? "" : "Set ANTHROPIC_API_KEY before starting the server to enable the Claude supervisor"),
+    chip(h.llm.available, h.llm.available ? h.llm.label : `${h.llm.label}: unavailable`, h.llm.detail),
   );
 }
 
@@ -101,7 +101,7 @@ function renderCaseOptions() {
   list.replaceChildren();
   for (const c of CASES) {
     const disabled = (c.needsNeural && !neuralAvailable()) ||
-      (c.needsLLM && !(state.health.llm.api_key_set && state.health.llm.installed));
+      (c.needsLLM && !state.health.llm.available);
     if (disabled) c.on = false;
     else if (c.defaultOn !== undefined && c.wasDisabled) c.on = c.defaultOn;
     c.wasDisabled = disabled;
@@ -121,10 +121,12 @@ function updateLLMHint() {
   const llm = CASES.find((c) => c.needsLLM);
   const h = state.health.llm;
   let text = "";
-  if (!(h.api_key_set && h.installed)) text = "Claude supervisor: set ANTHROPIC_API_KEY and restart to enable.";
-  else if (llm.on) {
+  if (!h.available) text = `LLM supervisor unavailable: ${h.detail}.`;
+  else if (llm.on && h.backend === "ollama") {
+    text = `${h.label} runs on this computer. Each decision takes a few seconds; that latency is applied in simulation time and the next question waits for the previous answer.`;
+  } else if (llm.on) {
     const calls = Math.min(40, Math.ceil(Number($("duration").value) / Number($("sup-interval").value)));
-    text = `Claude supervisor makes about ${calls} API calls per run (capped at 40). Its measured latency is applied in simulation time, so expect a slower run.`;
+    text = `${h.label} makes up to ${calls} API calls per run (capped at 40). Its measured latency is applied in simulation time and the next question waits for the previous answer.`;
   }
   $("llm-hint").textContent = text;
 }
@@ -235,7 +237,7 @@ async function run() {
   showBanner("");
   const btn = $("run-btn");
   btn.disabled = true;
-  btn.textContent = CASES.some((c) => c.on && c.needsLLM) ? "Running (consulting Claude)…" : "Running…";
+  btn.textContent = CASES.some((c) => c.on && c.needsLLM) ? "Running (consulting the LLM)…" : "Running…";
   document.body.classList.add("is-loading");
   try {
     const shown = CASES.filter((c) => c.on);
@@ -376,7 +378,7 @@ function renderDecisions(cases) {
     for (let k = 1; k <= 4; k++) meter.appendChild(el("i", k <= levels[d.mode] ? "on" : ""));
     pill.append(meter, document.createTextNode(d.mode));
     const why = el("span", "why", d.reasoning);
-    const src = d.source === "llm" ? `Claude · ${d.latency_s.toFixed(1)} s` : d.source === "llm_fallback" ? "fallback to rules" : "rules";
+    const src = d.source === "llm" ? `${state.health.llm.label} · answered after ${d.latency_s.toFixed(1)} s` : d.source === "llm_fallback" ? "fallback to rules" : "rules";
     why.appendChild(el("span", "src", `  (${src})`));
     li.append(el("span", "t", `${d.time.toFixed(2)} s`), who, pill, why);
     list.appendChild(li);

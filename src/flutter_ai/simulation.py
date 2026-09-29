@@ -164,8 +164,12 @@ def simulate(
             mode = item[1].mode
             controller.set_aggressiveness(item[1].aggressiveness)
 
-        # Query the supervisor on its slow clock
-        if supervisor is not None and t[k] >= next_sup - 1e-12 and k > window_start:
+        # Query the supervisor on its slow clock. A real supervisor asks one question at a time: while an
+        # answer is still in flight (LLM latency), later ticks are skipped rather than queued, so a stale
+        # answer can never overwrite a newer one. The next report then covers everything since the last one.
+        if supervisor is not None and t[k] >= next_sup - 1e-12 and k > window_start and pending:
+            next_sup += scenario.supervisor_interval
+        elif supervisor is not None and t[k] >= next_sup - 1e-12 and k > window_start:
             feats = extract_features(params, float(t[k]), U, flutter_speed, ys[window_start:k + 1],
                                      us[window_start:k], prev_energy, mode)
             prev_energy = feats.window_energy

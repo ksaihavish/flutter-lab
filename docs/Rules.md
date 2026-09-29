@@ -31,7 +31,7 @@
 |-----|---------|
 | Numerics | `numpy`, `scipy` |
 | Learning (training only) | `torch`, CPU wheels. Never import torch in serving code (`api/`, `controllers/`, `simulation.py`) |
-| LLM | the official `anthropic` SDK only. No OpenAI-compatible shims and no LangChain |
+| LLM | Claude: the official `anthropic` SDK. Local models: Ollama's native REST API through the standard library (`urllib`). No OpenAI-compatible shims and no LangChain. Both go through the same wrapper (`supervisor/llm.py`) |
 | Web API | `fastapi`, `pydantic` v2, `uvicorn` |
 | Figures | `matplotlib` (Agg backend) |
 | Tests | `pytest` |
@@ -74,6 +74,9 @@ in `pyproject.toml` (`train`, `llm`, `dev`) so the base install stays small.
    with latency disabled unless you say so explicitly.
 6. API keys come only from environment variables or `.env`, which is git-ignored. Never
    hard-code, log or send a key to the frontend.
+7. One question at a time: while an answer is pending, the simulator skips supervisor ticks
+   instead of queueing questions (a single on-board model answers sequentially). Never let a
+   late answer overwrite a newer one.
 
 ## 6. Testing
 

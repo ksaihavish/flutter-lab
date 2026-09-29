@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     sp = add("train", _train, "train the neural policy (needs PyTorch)")
     sp.add_argument("--quick", action="store_true", help="short training run for testing")
     sp = add("evaluate", _evaluate, "run the benchmark and write results + figures")
-    sp.add_argument("--seeds", type=int, default=5)
+    sp.add_argument("--seeds", type=int, default=20)
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8000)
@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("folder")
     sp.set_defaults(fn=_check_data)
     sp = add("all", _all, "analyze + train (if needed) + evaluate")
-    sp.add_argument("--seeds", type=int, default=5)
+    sp.add_argument("--seeds", type=int, default=20)
     sp.add_argument("--retrain", action="store_true")
     sp.add_argument("--quick", action="store_true")
 

@@ -17,6 +17,7 @@
   /* controller identity (validated: CVD dE >= 9.1 adjacent, light) */
   --c-open_loop: #898781;
   --c-lqr: #2a78d6;
+  --c-lqg: #4a3aa7;
   --c-neural: #eb6834;
   --c-lqr-rules: #1baf7a;
   --c-neural-rules: #eda100;
@@ -55,6 +56,7 @@
     --border: rgba(255, 255, 255, 0.10);
     --shadow: none;
     --c-lqr: #3987e5;
+    --c-lqg: #9085e9;
     --c-neural: #d95926;
     --c-lqr-rules: #199e70;
     --c-neural-rules: #c98500;
@@ -84,6 +86,7 @@
   --border: rgba(255, 255, 255, 0.10);
   --shadow: none;
   --c-lqr: #3987e5;
+  --c-lqg: #9085e9;
   --c-neural: #d95926;
   --c-lqr-rules: #199e70;
   --c-neural-rules: #c98500;

@@ -108,7 +108,7 @@ def simulate_endpoint(req: SimulateIn):
     results = []
     for case in req.cases:
         if case.controller == "open_loop" and case.supervisor != "none":
-            raise HTTPException(422, "A supervisor needs a feedback controller (lqr or neural).")
+            raise HTTPException(422, "A supervisor needs a feedback controller (lqr, lqg or neural).")
         try:
             res = run_case(p, Uf, scenario, case.controller, case.supervisor, case.aggressiveness)
         except FileNotFoundError as exc:

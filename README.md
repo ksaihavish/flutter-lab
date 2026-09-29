@@ -3,8 +3,8 @@
 [![CI](https://github.com/ksaihavish/flutter-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/ksaihavish/flutter-lab/actions/workflows/ci.yml)
 
 **Active flutter suppression on a wing section (plunge, pitch and trailing-edge flap).
-A validated physics model, a physics-trained neural controller, and an LLM (Claude)
-supervisor, with an interactive web simulator.**
+A validated physics model, classical (LQR, LQG) and physics-trained neural controllers, and an LLM
+supervisor (a local model or Claude), with an interactive web simulator.**
 
 ![Flutter Lab web app](docs/screenshot.png)
 
@@ -25,15 +25,16 @@ python -m flutter_ai serve
 
 **Docker:** `docker compose up --build`, then open <http://127.0.0.1:8000>.
 
-**Optional: the Claude supervisor.** Copy `.env.example` to `.env`, set
-`ANTHROPIC_API_KEY`, and restart.
+**Optional: the LLM supervisor.** By default it uses a local model through [Ollama](https://ollama.com)
+(`ollama pull llama3.1:8b`). To use Claude instead, copy `.env.example` to `.env`, set
+`FLUTTER_AI_LLM_BACKEND=claude` and `ANTHROPIC_API_KEY`, and restart.
 
 ## What you can do
 
 | Command | What it does |
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
-| `start.bat -Test` / `python -m pytest` | 73 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `start.bat -Test` / `python -m pytest` | 82 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark → `outputs/uav_flap/results.json` + 9 publication figures (~20 s) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU) |
@@ -52,18 +53,19 @@ Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, fro
   Theodorsen function to within 1 %. The flap loads match classical thin-airfoil theory.
 - **Controllers (200 Hz, 5 ms loop delay).** They command the flap through a ±15° servo:
   - a **delay-aware discrete LQR**;
+  - an **LQG**: LQR plus a turbulence model and a Kalman filter that estimates the gust;
   - a **neural policy** trained by back-propagating through the physics, with randomised delay,
     airspeed and turbulence.
 - **Supervisor (every 0.25 s).** A supervisor reads a plain-language situation report and picks
-  a mode (efficient / balanced / aggressive / emergency). It is either rule-based, or Claude via
-  structured output with automatic fallback. The LLM never commands the flap directly.
+  a mode (efficient / balanced / aggressive / emergency). It is either rule-based, or an LLM (local via Ollama, or Claude)
+  with schema-constrained output and automatic fallback. The LLM never commands the flap directly.
 
-**Current findings** (from `outputs/uav_flap/results.json`, 2026-09-29; details in [docs/Memory.md](docs/Memory.md)):
-- The neural policy beats LQR in every scenario both survive (e.g. turbulence RMS plunge
-  5.88 ± 0.32 vs 6.98 ± 0.37 mm), and it uses less actuator effort. At 1.3 × flutter speed with a gust,
-  only the neural policy survives.
-- The neural policy tolerates up to 10 ms of loop delay (its training range); LQR designed for 5 ms tolerates 15 ms.
-- The rule-based supervisor does **not** yet improve on a well-chosen fixed setting.
+**Current findings** (from `outputs/uav_flap/results.json`, 2026-09-29, 20 seeds; details in [docs/Memory.md](docs/Memory.md)):
+- The neural policy beats plain LQR (turbulence RMS plunge 6.10 ± 0.91 vs 7.10 ± 0.81 mm, -16 %,
+  20 seeds, Wilcoxon p < 0.001), but **LQG beats the neural policy** (3.71 ± 0.93 mm; neural +72 %) and has
+  the lowest cost J in every scenario on every wing. LQR's weakness was a missing gust model, not something learning fixed.
+- Neither supervisor (rules, or a local LLM) improves on a well-chosen fixed setting. A local 8B model answers in
+  ~4 s, too slow to react to gusts: the LLM needs a slower job (see docs/Memory.md).
 
 ## Validated against NASA wind-tunnel data
 

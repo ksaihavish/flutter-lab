@@ -44,13 +44,14 @@ contrast, so the rule is: always show a legend and the results table.
 |------|-------|-------|------|
 | Open loop (baseline, deliberately recessive) | `--c-open_loop` | `#898781` | `#898781` |
 | LQR | `--c-lqr` | `#2a78d6` | `#3987e5` |
+| LQG (turbulence model) | `--c-lqg` | `#4a3aa7` | `#9085e9` |
 | Neural (physics-trained) | `--c-neural` | `#eb6834` | `#d95926` |
 | LQR + rule supervisor | `--c-lqr-rules` | `#1baf7a` | `#199e70` |
 | Neural + rule supervisor | `--c-neural-rules` | `#eda100` | `#c98500` |
-| + Claude supervisor | `--c-llm` | `#e87ba4` | `#d55181` |
+| + LLM supervisor (local or Claude) | `--c-llm` | `#e87ba4` | `#d55181` |
 
-A new controller takes the **next** palette slot (violet `#4a3aa7` / `#9085e9`, then red
-`#e34948` / `#e66767`). Re-run the validator for the new set. Never generate new hues.
+A new controller takes the **next** palette slot (next: red `#e34948` / `#e66767`; violet went to LQG,
+re-validated 2026-09-29: CVD ΔE ≥ 9.1 light / 8.4 dark). Re-run the validator for the new set. Never generate new hues.
 At most one Claude case is shown at a time.
 
 ### Other roles

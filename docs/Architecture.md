@@ -10,7 +10,7 @@ Last updated: 2026-09-28 · Version 0.3.0
 ```
                           ┌──────────────────── slow loop (every 0.25 s) ────────────────────┐
                           │                                                                   │
-   measurements ──► Situation report ──► Supervisor (rules | Claude) ──► mode ──► aggressiveness a ∈ [0,1]
+   measurements ──► Situation report ──► Supervisor (rules | LLM) ──► mode ──► aggressiveness a ∈ [0,1]
         ▲            (features + text)     enum JSON, fallback,                          │
         │                                  call budget, latency                          ▼
         │                  ┌──────────────── fast loop (200 Hz) ─────────────────────────────────┐
@@ -78,8 +78,9 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | `controllers/base.py` | `Controller` interface, command history, `AeroLagObserver`, aggressiveness mapping |
 | `controllers/costs.py` | Shared Q and R weights (Bryson), so LQR and neural optimise the same objective |
 | `controllers/lqr.py` | Delay-augmented discrete LQR (DARE); `closed_loop_radius()` for delay-margin analysis (includes the observer) |
+| `controllers/lqg.py` | LQG baseline: LQR on the plant augmented with an AR(1) gust state, steady-state Kalman filter (aero-lag states + gust) replacing the observer |
 | `controllers/neural.py` | Policy file format, NumPy inference, `linearize()`; one policy per preset |
-| `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (Claude) |
+| `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (one safety wrapper; backends `OllamaSupervisor` (local, default) and `ClaudeSupervisor`) |
 | `simulation.py` | Closed-loop runner (`Scenario` → `SimResult`): delay queue, saturation, failure detection, supervisor scheduling |
 | `metrics.py` | Peak/RMS h, α, β; settling; gust recovery; effort; command rate; saturation; mode switches |
 | `scenarios.py` | Named benchmark scenarios; `scenarios_for(preset)` scales disturbances per rig (BACT ×0.25) |
@@ -120,11 +121,11 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | Language | Python ≥ 3.10 (developed on 3.14) | Scientific ecosystem |
 | Numerics | NumPy, SciPy (`expm`, `solve_discrete_are`, Hankel functions, `linear_sum_assignment`) | Exact, well tested |
 | Learning | PyTorch CPU, **training only** | Differentiable simulation; serving needs only NumPy |
-| LLM | Anthropic SDK, `claude-opus-5` (via `FLUTTER_AI_LLM_MODEL`), structured JSON output, server-side refusal fallback | Enum-constrained decisions |
+| LLM | Local: Ollama REST API via `urllib`, `llama3.1:8b`, schema-constrained decoding. Claude: Anthropic SDK, `claude-opus-5`, structured JSON output, server-side refusal fallback. Select with `FLUTTER_AI_LLM_BACKEND` | Enum-constrained decisions |
 | API | FastAPI + Pydantic v2 + Uvicorn | Typed validation; docs at `/docs` |
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
-| Tests | pytest + FastAPI TestClient | 73 tests |
+| Tests | pytest + FastAPI TestClient | 82 tests |
 | Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
 | Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 
