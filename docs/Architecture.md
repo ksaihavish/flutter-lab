@@ -69,7 +69,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 
 | Module | Responsibility |
 |--------|----------------|
-| `params.py` | `WingParams` (frozen dataclass, SI): geometry, inertia, frequencies, damping, optional flap, modified-strip-theory corrections, actuation, limits; presets `uav_flap` (default), `bact` (NASA wind-tunnel rig), `uav_section` (2-DOF), `hodges_pierce` (textbook) |
+| `params.py` | `WingParams` (frozen dataclass, SI): geometry, inertia, frequencies, damping, optional flap, modified-strip-theory corrections, actuation, limits; presets `uav_flap` (default), `bact` (NASA wind-tunnel rig), `uav_section` (2-DOF), `hodges_pierce` (textbook, validation only: hidden from the simulator) |
 | `validation.py` | Comparison with published wind-tunnel data (BACT) → `outputs/validation/bact.json` |
 | `aero.py` | Exact Theodorsen C(k), Jones approximation, flap coefficients T1…T14 |
 | `model.py` | Generic N-DOF assembly (A, B, G), exact ZOH discretisation (cached), energy, state names |
@@ -124,7 +124,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | API | FastAPI + Pydantic v2 + Uvicorn | Typed validation; docs at `/docs` |
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
-| Tests | pytest + FastAPI TestClient | 65 tests |
+| Tests | pytest + FastAPI TestClient | 73 tests |
 | Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
 | Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 

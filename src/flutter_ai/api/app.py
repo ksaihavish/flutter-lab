@@ -17,7 +17,7 @@ from .. import __version__
 from ..experiments import neural_available, run_case
 from ..flutter import flutter_analysis, pk_flutter_speed
 from ..gusts import GustSpec
-from ..params import PRESETS, WingParams, get_preset
+from ..params import PRESETS, VALIDATION_ONLY_PRESETS, WingParams, get_preset
 from ..paths import FRONTEND_DIR
 from ..scenarios import scenarios_for
 from ..simulation import Scenario
@@ -64,7 +64,7 @@ def health():
 @app.get("/api/presets")
 def presets():
     return [{**p.to_dict(), "flutter_speed": _flutter(p).flutter_speed, "neural_policy_available": neural_available(p)}
-            for p in PRESETS.values()]
+            for p in PRESETS.values() if p.name not in VALIDATION_ONLY_PRESETS]
 
 
 @app.get("/api/scenarios")
@@ -89,6 +89,9 @@ def flutter(req: FlutterIn):
 
 @app.post("/api/simulate")
 def simulate_endpoint(req: SimulateIn):
+    if req.preset in VALIDATION_ONLY_PRESETS:
+        raise HTTPException(422, f"'{req.preset}' is a validation-only preset (flutter analysis only); "
+                                 "use it with /api/flutter or 'python -m flutter_ai analyze'.")
     p = _params(req.preset, req.overrides)
     Uf = _flutter_speed(p)
     s = req.scenario

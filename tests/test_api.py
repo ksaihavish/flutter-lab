@@ -36,6 +36,13 @@ def test_supervisor_on_open_loop_rejected():
     assert r.status_code == 422
 
 
+def test_validation_only_preset_not_simulated():
+    assert all(p["name"] != "hodges_pierce" for p in client.get("/api/presets").json())
+    r = client.post("/api/simulate", json={"preset": "hodges_pierce", "cases": [{"controller": "lqr"}]})
+    assert r.status_code == 422 and "validation-only" in r.json()["detail"]
+    assert client.post("/api/flutter", json={"preset": "hodges_pierce"}).status_code == 200
+
+
 def test_unknown_preset_404():
     assert client.post("/api/flutter", json={"preset": "nope"}).status_code == 404
 

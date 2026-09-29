@@ -14,9 +14,9 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
   rule-based or Claude supervisor, a benchmark runner, and a web simulator.
 - **Repo:** https://github.com/ksaihavish/flutter-lab (renamed 2026-09-29 from Hybrid-PINN-LLM-...; old URL redirects).
 - **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
-- **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo, ±15° command,
+- **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo (damping 0.56), ±15° command,
   1-step (5 ms) loop delay.
-- **Run:** `start.bat` (web app) · `python -m pytest` (65 tests, ~70 s) ·
+- **Run:** `start.bat` (web app) · `python -m pytest` (73 tests, ~70 s) ·
   `python -m flutter_ai evaluate --preset uav_flap` (~20 s).
 - **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
   deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
@@ -31,7 +31,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 |---|---|---|
 | Physics (2-DOF + 3-DOF flap) | ✅ validated | See §3 |
 | Discrete, delay-aware LQR | ✅ | Designed for the loop delay (augmented state) |
-| Neural policy `uav_flap` | ✅ trained 2026-09-28 | 64×64 tanh MLP; trained for delays 0–2, speeds 0.8–1.3 U_F, turbulence ≤ 1.5 m/s RMS; ~5 min |
+| Neural policy `uav_flap` | ✅ **retrained 2026-09-29** (servo damping 0.05 → 0.56) | 64×64 tanh MLP; trained for delays 0–2, speeds 0.8–1.3 U_F, turbulence ≤ 1.5 m/s RMS; ~5 min |
 | Neural policy `uav_section` | ✅ trained 2026-09-28 | Speeds 0.8–1.4 U_F, turbulence ≤ 2 m/s |
 | Rule supervisor | ✅ | Works; **adds no measurable value** (see §4) |
 | Claude supervisor | ✅ code + tests (mocked) | **Never run against the real API yet.** Needs `ANTHROPIC_API_KEY` |
@@ -52,25 +52,27 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 3-DOF + CI done; **n
 - Flap apparent-mass matrix is symmetric positive definite; a stiff hinge recovers the 2-DOF flutter speed.
 - Delay-margin analysis agrees with the simulator (a test checks this).
 
-## 4. Latest results (copied from `outputs/*/results.json`, generated 2026-09-28T17:48Z)
+## 4. Latest results (copied from `outputs/*/results.json`; uav_flap generated 2026-09-29T04:09Z)
 
-**uav_flap (3-DOF), nominal 5 ms delay.** Flutter 46.50 m/s @ 10.65 Hz (p-k 46.96).
+**uav_flap (3-DOF, servo damping 0.56), nominal 5 ms delay.** Flutter 46.40 m/s @ 10.43 Hz (p-k 46.83).
 
 | Scenario | LQR RMS h (mm) | Neural RMS h (mm) | Notes |
 |---|---|---|---|
-| Turbulence patch, 1.1 U_F (5 seeds) | 6.22 ± 0.34 | **4.86 ± 0.28** | Neural also uses less effort (1.51 vs 1.74) |
-| Discrete gust 4 m/s, 1.1 U_F | 3.87 | **2.74** | Effort 0.048 vs 0.109 |
-| High-speed gust, 1.3 U_F | fail | fail | Beyond the flap's authority; stress test |
-| Below flutter, 0.9 U_F | 3.87 (worse than open loop, 2.31) | 2.32 | LQR adds response below flutter: investigate |
+| Turbulence patch, 1.1 U_F (5 seeds) | 6.98 ± 0.37 | **5.88 ± 0.32** | Neural also uses less effort (1.66 vs 2.07) |
+| Discrete gust 4 m/s, 1.1 U_F | 4.30 | **3.42** | Effort 0.055 vs 0.143 |
+| High-speed gust, 1.3 U_F | fail | **3.50** | Neural survives, LQR fails. One run at the edge of the envelope |
+| Below flutter, 0.9 U_F | 3.90 (worse than open loop, 2.35) | 2.48 | LQR adds response below flutter: investigate |
 
+- **Pareto (turbulence, fixed aggressiveness 0–1):** every neural point (effort 1.60–2.00, RMS 6.04–6.26 mm) beats
+  every LQR point (effort 2.35–2.57, RMS 6.44–10.59 mm) on both axes. LQR at aggressiveness 0.1–0.3 *fails*.
 - **Delay robustness** (discrete gust, 1.1 U_F), RMS in mm by delay of 0/5/10/15/20/30 ms:
-  - neural 2.79 / 2.74 / 2.70 / 5.20 / fail / fail;
-  - LQR fixed for 5 ms 3.92 / 3.87 / 3.71 / 4.18 / fail / fail;
-  - LQR re-designed for the true delay 2.14 / 3.87 / 4.77 / 4.95 / 5.05 / 5.11.
-- **Envelope** (velocity sweep with gust): open loop survives to 1.0 U_F, LQR to 1.20, neural to 1.25.
-- **Supervisor:** the rule supervisor lands *on* the fixed-aggressiveness trade-off curve
-  (turbulence: neural 4.86 vs neural+rules 4.94). **No evidence yet that supervision adds
-  performance.** This is the key open question for RQ2 and the Claude experiments.
+  - neural 3.45 / 3.42 / 3.38 / fail / fail / fail (trained on 0–10 ms only);
+  - LQR fixed for 5 ms 4.35 / 4.30 / 4.26 / 6.34 / fail / fail;
+  - LQR re-designed for the true delay 2.71 / 4.30 / 4.84 / 4.97 / 5.05 / 5.08.
+- **Envelope** (velocity sweep with gust): open loop survives to 1.0 U_F, LQR to 1.25, neural to 1.30.
+- **Supervisor:** the rule supervisor lands *on* the fixed-aggressiveness trade-off curve (neural+rules 6.21 mm
+  @ effort 1.94 vs fixed neural 6.20 @ 1.94), and fixed "efficient" (6.04 @ 1.60) beats both. 5-seed turbulence:
+  neural 5.88 vs neural+rules 5.93. **No evidence that supervision adds performance.** Key open question for RQ2.
 
 The 2-DOF `uav_section` results show the same pattern (neural better than LQR; supervisor neutral).
 
@@ -101,6 +103,8 @@ not Pareto-dominant as on `uav_flap`. At 1.3 U_F: 0.38 vs 0.75 mm. Both survive 
 | 2026-09-29 | BACT scenarios: disturbances ×0.25; training range 0.8–1.2 U_F, turbulence ≤ 0.5 m/s | Weak 30 %-span flap; NASA demonstrated suppression to ~1.16 U_F; LQR fails only from the standard 2°/10 mm start |
 | 2026-09-29 | Flutter sweep range adapts (6 → 30 → 150 b·ω_α) | BACT (mass ratio ~880) flutters at ~20 b·ω_α |
 | 2026-09-29 | Repo renamed to `flutter-lab` | The method is no longer a PINN; name matches the project |
+| 2026-09-29 | `uav_flap` servo damping 0.05 → 0.56 (BACT's measured actuator); neural policy retrained, benchmark re-run, data template regenerated | At 0.05 the real flap overshot to ~29° with a ±15° command, giving controllers unrealistic authority. Old policy is in git history |
+| 2026-09-29 | `hodges_pierce` is validation-only (`VALIDATION_ONLY_PRESETS`): hidden from the simulator, 422 on /api/simulate | 0.1 Hz flutter at 2.2 m/s makes the gust scenarios meaningless |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
@@ -108,10 +112,17 @@ not Pareto-dominant as on `uav_flap`. At 1.3 U_F: 0.38 vs 0.75 mm. Both survive 
 - LQR's optimism: in benchmarks it is re-designed for the true delay; the fixed-design variant is in the delay sweep.
 - The neural policy is evaluated on scenarios drawn from its own training distribution (turbulence
   statistics); an LQG with a turbulence model is the fair baseline (Phase 4.2).
-- LQR increases the response below flutter on `uav_flap` (3.87 vs 2.31 mm open loop); its Q/R weights may need retuning.
+- LQR increases the response below flutter on `uav_flap` (3.90 vs 2.35 mm open loop); its Q/R weights may need retuning.
+  A reviewer will read this as a weak baseline: fix it before claiming neural > LQR.
+- Since the servo fix, the neural policy tolerates only 0–10 ms of delay (its training range); the fixed LQR survives 15 ms.
+  Train on delays 0–3 steps if delay robustness is to be claimed.
+- The neural policy's aggressiveness input barely moves its trade-off (RMS 6.04–6.26 mm), and "aggressive" is worse
+  than "efficient" on both axes, so a supervisor has almost nothing to choose between. This limits RQ2 by design.
 - The Claude supervisor is untested against the live API (only with mocks).
 - The observer's aero-lag estimate lags about half a step; that is fine, but it is part of the loop.
 - `pytest` takes ~70 s (flutter sweeps); make the slow ones optional if needed.
+- BACT: after the turbulence patch the neural policy leaves a slowly decaying pitch oscillation (LQR settles
+  faster), so neural's settling time reads ~10 s / "–" in the web app.
 
 ## 7. Next steps (in order)
 

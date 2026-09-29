@@ -261,7 +261,9 @@ PRESETS: dict[str, WingParams] = {
         x_beta=0.01,
         r_beta_sq=0.003,
         f_beta=30.0,
-        zeta_beta=0.05,
+        # Servo damping as measured on the BACT TE actuator (NASA/TP-1998-206270, Table 3). A lightly
+        # damped servo (0.05) let the flap overshoot to ~2x its +/-15 deg command limit.
+        zeta_beta=0.56,
         actuation="flap_servo",
         u_max=(math.radians(15.0),),
     ),
@@ -295,6 +297,10 @@ PRESETS: dict[str, WingParams] = {
 }
 
 DEFAULT_PRESET = "uav_flap"
+
+# Textbook cases that only check the flutter analysis. Their scales (hodges_pierce: 0.1 Hz flutter at 2.2 m/s)
+# make the gust scenarios meaningless, so the simulator does not offer them.
+VALIDATION_ONLY_PRESETS = frozenset({"hodges_pierce"})
 
 
 def get_preset(name: str | None = None, **overrides) -> WingParams:

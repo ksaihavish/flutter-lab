@@ -33,7 +33,7 @@ python -m flutter_ai serve
 | Command | What it does |
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
-| `start.bat -Test` / `python -m pytest` | 65 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `start.bat -Test` / `python -m pytest` | 73 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark → `outputs/uav_flap/results.json` + 9 publication figures (~20 s) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU) |
@@ -58,10 +58,11 @@ Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, fro
   a mode (efficient / balanced / aggressive / emergency). It is either rule-based, or Claude via
   structured output with automatic fallback. The LLM never commands the flap directly.
 
-**Current findings** (from `outputs/uav_flap/results.json`, 2026-09-28; details in [docs/Memory.md](docs/Memory.md)):
+**Current findings** (from `outputs/uav_flap/results.json`, 2026-09-29; details in [docs/Memory.md](docs/Memory.md)):
 - The neural policy beats LQR in every scenario both survive (e.g. turbulence RMS plunge
-  4.86 ± 0.28 vs 6.22 ± 0.34 mm), and it uses less actuator effort.
-- Both tolerate the same loop delay (up to 15 ms).
+  5.88 ± 0.32 vs 6.98 ± 0.37 mm), and it uses less actuator effort. At 1.3 × flutter speed with a gust,
+  only the neural policy survives.
+- The neural policy tolerates up to 10 ms of loop delay (its training range); LQR designed for 5 ms tolerates 15 ms.
 - The rule-based supervisor does **not** yet improve on a well-chosen fixed setting.
 
 ## Validated against NASA wind-tunnel data
