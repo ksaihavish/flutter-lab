@@ -107,6 +107,11 @@ class FTResult:
     metrics: dict = field(default_factory=dict)
 
 
+def _delays(fault: AnyFault, t: np.ndarray, k: int) -> np.ndarray:
+    """Loop delay [samples] of steps 0..k-1, as the flight computer measured it (margin estimator v2)."""
+    return np.array([delay_at(fault, float(tj)) for tj in t[:k]], dtype=int)
+
+
 def _applied_nominal(us: np.ndarray, i0: int, k: int) -> np.ndarray:
     """Commands as applied with the nominal 1-sample loop delay, aligned with samples i0..k-1."""
     prev = us[i0 - 1:i0] if i0 > 0 else np.zeros((1, us.shape[1]))
@@ -122,7 +127,7 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                 bank_factory: Callable[[], dict[str, Controller]] = make_bank,
                 x0: tuple[float, float] = (0.0, 0.0), margin_every_s: float | None = None,
                 diagnose_every_s: float | None = None, diagnoser=None,
-                fixed_llm_latency_s: float | None = None) -> FTResult:
+                fixed_llm_latency_s: float | None = None, margin_version: int = 1) -> FTResult:
     """
     fault: a Fault or a CompositeFault (several at once).
     supervisor: object with decide(FTFeatures) -> FTDecision-like (mode, reasoning, source, latency_s) or None.
@@ -134,6 +139,8 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
         supervisor's features. None = off. diagnoser: a DiagnoserModel (default: the trained one for this preset).
     fixed_llm_latency_s: apply this latency to every LLM answer instead of its measured one (the measured value is
         still recorded): makes an LLM run independent of how busy the machine is.
+    margin_version: 1 = margin.estimate (the pre-registered physics supervisors); 2 = margin.estimate_v2 (authority,
+        turbulence and noise estimates, the measured loop delay, robust margins; FTPhysicsRuleSupervisorV2).
     Latency: every decision's latency_s is applied in simulation time (LLMs measure theirs; rule supervisors have 0
     unless wrapped in a Delayed supervisor for the time-scale study).
     """
@@ -171,6 +178,8 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
     last_ctrl_switch, next_sup = -1e9, baseline_window[1]
     margin_base, next_margin, latest_margin = None, math.inf, None
     on_board_diagnoser, next_diag, latest_diag = None, math.inf, None
+    if margin_version not in (1, 2):
+        raise ValueError(f"margin_version must be 1 or 2, got {margin_version}")
     baseline: Baseline | None = None
     failed, failure_time, last = False, None, n_t - 1
 
@@ -193,10 +202,16 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
             i0 = int(baseline_window[0] / dt)
             res, noise = raw_features(p, U_level, dt, ys[i0:k], _applied_nominal(us, i0, k))
             baseline = Baseline(residual_rms=res, noise=noise, freq_hz=healthy_freq(p, ys[i0:k], dt))
-            if margin_every_s is not None:
+            if margin_every_s is not None and margin_version == 1:
                 from .margin import applied_commands, fit_window
 
                 margin_base = fit_window(p, U_level, dt, ys[i0:k], applied_commands(p, us, k, dt)[i0:k])
+                next_margin = tk
+            elif margin_every_s is not None:
+                from .margin import applied_commands, fit_window_v2
+
+                margin_base = fit_window_v2(p, U_level, dt, ys[i0:k],
+                                            applied_commands(p, us, k, dt, _delays(fault, t, k))[i0:k])
                 next_margin = tk
             if diagnose_every_s is not None:
                 from .diagnoser import DiagnoserModel, FlightDiagnoser, baseline_stats, model_path
@@ -214,13 +229,18 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
 
         # on-board flutter-margin estimate from the last LOOKBACK_S (a physics-informed report block)
         if margin_every_s is not None and baseline is not None and tk >= next_margin - 1e-12:
-            from .margin import applied_commands, estimate
+            from .margin import applied_commands, estimate, estimate_v2
 
             next_margin += margin_every_s
             a = max(0, k - int(LOOKBACK_S / dt))
-            est, _ = estimate(p, flutter_speed, tk, U_level, dt, ys[a:k], applied_commands(p, us, k, dt)[a:k],
-                              margin_base, cruise=cruise)
-            latest_margin = est.to_dict()
+            if margin_version == 2:  # the flight computer knows its own loop timing (as loop_delay_ms in the report)
+                latest_margin = estimate_v2(p, flutter_speed, tk, U_level, dt, ys[a:k],
+                                            applied_commands(p, us, k, dt, _delays(fault, t, k))[a:k], margin_base,
+                                            delay=delay_at(fault, tk), cruise=cruise)[0].to_dict()
+            else:
+                est, _ = estimate(p, flutter_speed, tk, U_level, dt, ys[a:k], applied_commands(p, us, k, dt)[a:k],
+                                  margin_base, cruise=cruise)
+                latest_margin = est.to_dict()
 
         # apply answers that have arrived. Only a change of inner-loop controller has to respect the dwell time; an
         # answer that would switch controllers too early is dropped and the supervisor is asked again (no stale

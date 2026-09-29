@@ -110,3 +110,58 @@ def oracle_mode(p, flutter_speed: float, flutter_freq_hz: float, fault: Fault, s
         return hold[0], runs
     slow = [m for m in ("cautious", "safe") if m in alive]  # least slow-down first
     return (slow[0] if slow else "none survives"), runs
+
+
+class FTPhysicsRuleSupervisorV2(FTRuleSupervisor):
+    """
+    Symptom rules + the v2 physics estimate (margin.estimate_v2: robust stability, control authority, measured loop
+    delay, turbulence and sensor noise). As in FTPhysicsRuleSupervisor, the symptom rules decide *whether* to act and
+    propose a mode; the physics decides which modes may be chosen:
+      1. admissible = stable over the mode's transit on every wing of the identification's confidence region AND
+         enough control authority (predicted 3-sigma flap command and rate below the limits) where the identified wing
+         needs control at the mode's airspeed (margin.MarginEstimateV2 defines both);
+      2. the rules' proposal is kept if admissible; otherwise the least disruptive admissible mode (MODE_ORDER: hold
+         speed first, then the smallest slow-down). This also acts when no rule fires but the current mode has become
+         inadmissible (e.g. a turbulence rise that will saturate the flap);
+      3. if no mode is robustly admissible, the same choice among the modes admissible on the point estimate, unless
+         `strict`. Reason: the confidence region is conservative (after structural damage it contains wings on which
+         no mode is stable), and 'safe' is then not certified either (its slow-down crosses the band where the damaged
+         wing needs control);
+      4. if none is admissible even on the point estimate, 'safe' (the largest open-loop margin at the end).
+    Without a v2 estimate in the features it is exactly the symptom rules. Written from the estimator's definitions,
+    developed on seeds >= 1000 only, never tuned on the reserved seeds.
+    """
+
+    name = "rules+physics_v2"
+
+    def __init__(self, strict: bool = False):
+        self.strict = strict
+        if strict:
+            self.name = "rules+physics_v2_strict"
+
+    def decide(self, f: FTFeatures) -> FTDecision:
+        d = super().decide(f)
+        d.source = self.name
+        modes = (f.margin or {}).get("modes")
+        if not modes:
+            return d
+        tiers = [("robustly admissible", "admissible")]
+        if not self.strict:
+            tiers.append(("admissible on the point estimate (none robustly)", "admissible_point"))
+        for label, key in tiers:
+            ok = [m for m in MODE_ORDER if modes.get(m, {}).get(key, False)]
+            if not ok:
+                continue
+            if d.mode in ok:
+                return d
+            why = ", ".join(f"'{m}' {_why_not(modes[m])}" for m in MODE_ORDER if m not in ok and m in modes)
+            return FTDecision(time=f.time, mode=ok[0], source=self.name,
+                              reasoning=f"{d.reasoning} Physics v2: {why}; least disruptive mode {label}: '{ok[0]}'.")
+        return FTDecision(time=f.time, mode="safe", source=self.name,
+                          reasoning="Physics v2: no mode admissible; take the largest margin.")
+
+
+def _why_not(m: dict) -> str:
+    if not m.get("authority_ok", True):
+        return "would saturate the flap" if m.get("authority_ratio") is not None else "unstable at its airspeed"
+    return "predicted unstable" if not m.get("stable", True) else "not robustly stable"

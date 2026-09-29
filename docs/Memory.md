@@ -3,7 +3,7 @@
 *The project's running state, so a new chat or AI tool can continue without re-reading the
 whole codebase. **Update this file at the end of every working session.***
 
-Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator); **next = the owner's paper items** (`research/submission-checklist.md`)
+Last updated: **2026-09-30** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator); **next = the owner's paper items** (`research/submission-checklist.md`)
 
 ---
 
@@ -36,7 +36,7 @@ Last updated: **2026-09-29** · Version **0.3.0** · Phase: 4 done (fair baselin
 | Neural policy `uav_section` | ✅ trained 2026-09-28 | Speeds 0.8–1.4 U_F, turbulence ≤ 2 m/s |
 | Rule supervisor | ✅ | Works; **adds no measurable value** (see §4) |
 | Fault-tolerant supervision | ✅ 2026-09-29 | `fault_tolerance/`: faults, diagnostics, bank, rules/random/oracle/LLM, `ft-benchmark`, `ft-stability`. Results in §4 (`outputs/uav_flap/ft_benchmark.json`, fig12) |
-| Physics-informed advisor | 🔄 started 2026-09-29 | `research/physics-advisor-plan.md`: `fault_tolerance/margin.py` (v1 flutter-margin estimator: pitch stiffness + flap effectiveness, flutter speed, per-mode predicted stability; `tests/test_margin.py`). No-latency ablation of the FT benchmark running (`--tag no_latency_2s`) |
+| Physics-informed advisor | 🔄 started 2026-09-29 | `research/physics-advisor-plan.md`: `fault_tolerance/margin.py` (v1 flutter-margin estimator: pitch stiffness + flap effectiveness, flutter speed, per-mode predicted stability; `tests/test_margin.py`). No-latency ablation of the FT benchmark running (`--tag no_latency_2s`). **v2 built 2026-09-30** (authority, turbulence/noise, measured delay, robust margins; `rules+physics_v2`; `margin-eval` on dev seeds → `margin_eval.json`, fig15; `tests/test_margin_v2.py`) |
 | Paper prep | ✅ 2026-09-29 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
@@ -195,6 +195,71 @@ LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
 - **The structural-damage trap.** After stiffness loss, holding speed survived 100 % but a moderate slow-down only 0 %: the controllers are gain-scheduled for the healthy wing, which is below flutter at the lower speed while the damaged wing is not. A reflex of "anomaly, slow down a little" is wrong here.
 - **In one sentence:** Given slow faults and a menu of pre-verified modes, the same model did worse than hand-written rules (27 % vs 48 % of faulty flights survived), and both stayed below an oracle that knows the fault (100 %).
 
+### Physics estimator v2 (uav_flap, development seeds only)
+
+**margin-eval** (generated 2026-09-29T19:30:46+00:00, seeds 1000-1004, `outputs/uav_flap/margin_eval.json`, fig15). Development data: the design was made on these seeds, so this is not a test.
+
+Estimator accuracy after fault onset, per fault: median |flutter-speed error| v1 / v2; share of estimates whose v2 worst case is at or below the true flutter speed; turbulence estimate / truth (median); predicted / measured nominal flap-rate RMS, windows without saturation (on board; with the true inputs):
+
+| Fault | U_F error v1 / v2 | worst case ≤ truth | turbulence est./true | rate RMS pred./meas. (on board; truth model) |
+|---|---|---|---|---|
+| none | 1 % / 1 % | 100 % | 1.03 | 1.03; 0.99 |
+| servo_slew | 1 % / 1 % | 93 % | 1.08 | 1.02; 0.97 |
+| stiffness_loss | 4 % / 4 % | 94 % | 0.87 | 0.83; 0.99 |
+| sensor_noise | 16 % / 16 % | 20 % | 1.40 | 1.04; 1.72 |
+| turbulence_rise | 1 % / 1 % | 100 % | 0.96 | 1.04; 1.10 |
+| loop_delay | 1 % / 1 % | 100 % | 1.06 | 1.00; 0.98 |
+| flap_effectiveness | 2 % / 2 % | 71 % | 1.11 | 1.01; 1.10 |
+
+Per-mode predictions at the fully developed fault vs the fixed-mode outcomes (pooled faulty (fault, seed, mode) cases): accuracy · predicted fine but the mode failed · flagged but the mode survived:
+
+- v1 stable: 58 % of 120 · 48 missed · 2 conservative
+- v2 admissible (robust): 67 % of 120 · 22 missed · 18 conservative
+- v2 admissible (point): 66 % of 120 · 25 missed · 16 conservative
+
+Warning before the nominal flight fails (flights warned / failed, median lead time):
+
+- servo_slew: v1 0/5, v2 2/5 (6.0 s)
+- sensor_noise: v1 0/4, v2 4/4 (11.6 s)
+- turbulence_rise: v1 0/5, v2 5/5 (6.6 s)
+- loop_delay: v1 0/5, v2 5/5 (2.8 s)
+- flap_effectiveness: v1 0/5, v2 4/5 (4.3 s)
+- v2 flags the nominal mode where it survived (share of estimates): none 11 %, stiffness_loss 75 %, sensor_noise 12 %
+
+Dev comparison (5 seeds; survival · mean time slowed over survivors, s):
+
+| Fault | oracle | rules | rules+physics | rules+physics_v2 | rules+physics_v2_strict |
+|---|---|---|---|---|---|
+| none | 100 % · 0.0 | 100 % · 2.6 | 100 % · 2.6 | 100 % · 6.8 | 100 % · 6.8 |
+| servo_slew | 100 % · 22.8 | 20 % · 15.7 | 20 % · 15.7 | 20 % · 22.2 | 20 % · 22.2 |
+| stiffness_loss | 100 % · 0.0 | 0 % · – | 80 % · 0.9 | 20 % · 19.7 | 0 % · – |
+| sensor_noise | 100 % · 18.2 | 100 % · 22.4 | 60 % · 22.5 | 100 % · 22.4 | 100 % · 22.4 |
+| turbulence_rise | 100 % · 18.2 | 60 % · 17.5 | 60 % · 17.5 | 80 % · 17.4 | 80 % · 17.4 |
+| loop_delay | 100 % · 22.8 | 80 % · 21.8 | 80 % · 21.8 | 20 % · 22.2 | 20 % · 22.2 |
+| flap_effectiveness | 100 % · 22.8 | 20 % · 17.5 | 20 % · 17.5 | 40 % · 20.2 | 40 % · 20.2 |
+| **all faulty** | **100 %** · 17.4 | **47 %** · 20.4 | **53 %** · 15.2 | **47 %** · 20.5 | **43 %** · 20.5 |
+
+rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only with v1 9, exact McNemar p = 0.80.
+
+**What it says (dev seeds; interpretation of the tables above)**
+- **As a predictor, v2 sees what v1 cannot:** v1 never warned before a nominal flight failed; v2 warned before most failures
+  (turbulence, delay, noise, flap damage) and halved the "predicted fine but failed" cases, at the price of more
+  conservative calls. Its authority prediction matches the measured flap rate when the inputs are right (truth model
+  close to 1 except under sensor noise, where the linear noise model overpredicts).
+- **As a supervisor, v2 did not beat v1** (pooled survival equal to the rules, below v1; not significant). Where it
+  loses: after **stiffness loss** the identified wing is too soft (flutter-speed error negative), so the nominal mode
+  is not robustly stable on the softer wings of the confidence region and its point-estimate authority ratio is near
+  or above 1 (`at_evaluation` in the JSON), although nominal survives: the structural-damage trap is then answered by
+  a slow-down, which fails; under a
+  **growing loop delay** v2 correctly finds LQG unstable at 10 ms and picks the neural mode, which then saturates at
+  15 ms while the 7 s dwell time locks it in. Where it gains: turbulence rise and flap damage (the faults v1 is blind
+  to). False alarms in healthy flight rose (more time slowed). **Sensor noise** biases the identified stiffness upward
+  (errors in the regressors), so the estimated flutter speed is far too high there and its worst case rarely covers
+  the truth; the symptom rules carry that fault.
+- Next if pursued: an authority test robust to the stiffness bias (e.g. authority over the confidence region with a
+  better-identified flap factor), a fault-growth-aware choice (avoid controller switches that lock in under a growing
+  fault), and a shorter or weighted window to reduce the lag behind ramping faults. Evaluate only on fresh seeds.
+
 ## 5. Decisions log (why things are the way they are)
 
 | Date | Decision | Why |
@@ -251,6 +316,7 @@ LLM answers: 536, latency median 4.4 s, p95 5.9 s; fallbacks to the rules: 1.
 | 2026-09-29 | **Guardian live view** = a background job (one daemon worker, POST → poll → full recording), then playback in the browser; identical requests reuse the recording; kept in memory only; uav_flap only; supervisors none / rules / rules + physics, **no LLM**; default seed 1000 (dev), onset ≥ 4.5 s; ground truth = `flutter_analysis`'s flutter speed computed root-only (a test pins equality), per fault level | A 30 s flight with the estimator costs ~0.5–2 min of CPU (12 s flight: 40 s on the busy machine), too slow for one request; streaming would need hooks inside `ft_simulate`, and recording through a supervisor wrapper leaves the benchmark code untouched and the flight identical. The GPU is busy and the view must never call a model. The FT study is calibrated for uav_flap (fault sizes, dwell time). The diagnostics calibrate on 0.5–4.5 s |
 | 2026-09-29 | Guardian colours: wing = active controller's entity colour (LQG / neural); on-board estimate = new token `--c-estimate` (slot 3 aqua) | Validator (all pairs, with LQG + neural): aqua passes light and dark; blue failed in dark next to the LQG violet (CVD ΔE 1.9); magenta, yellow, red and green failed next to orange |
 | 2026-09-29 | **Learned fault diagnoser** (`fault_tolerance/diagnoser*.py`, `train-diagnoser` / `eval-diagnoser`, `models/diagnoser_uav_flap.npz` + `.json`, results `outputs/uav_flap/diagnoser_eval.json`, fig14): physics features per 2.5 s window -> encoder -> multi-label head for the 4 known faults + decoder; unknown-fault score = reconstruction error (fixed before evaluation; Mahalanobis only secondary); thresholds from validation flights; loop timing not an input; loop_delay / flap_effectiveness never in training or calibration; `CompositeFault` for 2-3 simultaneous faults; seeds 10000+ / 20000+ / 30000-32055 | Owner: the LLM is too slow and passive to supervise; a fast learned model should analyse the data and an LLM only explain it (`format_diagnosis` report block). Features, not raw signals: the fault signatures are known physics and the model stays tiny (NumPy, sub-millisecond). Weak spots are in the JSON and `research/physics-advisor-plan.md`: slow servo (latent until it limits the flap), false servo alarms in `safe`-mode flights, flap damage rarely flagged as unknown |
+| 2026-09-30 | **Estimator v2** (`margin.estimate_v2`, `FTPhysicsRuleSupervisorV2`, `ft_simulate(margin_version=2)`, `margin-eval`); v1 `estimate`, `FTPhysicsRuleSupervisor` and the `mode_matrices` defaults unchanged. Authority = 3σ flap command/rate (Lyapunov, AR(1) gust + sensor noise) / limit, required only where the identified wing needs control; turbulence and noise from the residual's gust component and a 4th-difference noise level, calibrated on take-off; measured per-sample loop delay in the fit and `mode_matrices(delay=d)`; robust = worst case over the 95 % confidence ellipse (Gauss-Newton covariance inflated to contain a HAC sandwich, plus the calibration's uncertainty); supervisor falls back to point-estimate admissibility when nothing is robustly admissible (`strict` variant without it); flap factor bounds 0.05-2 in v2. Developed on seeds 1000-1004 only | v1 cannot see saturation (flap damage), delay, turbulence or noise. Details and limits: `research/physics-advisor-plan.md` Step 2; results only in `outputs/uav_flap/margin_eval.json`. v1's flap floor 0.3 on a raw healthy fit of ~0.75 capped the identifiable damage at about −60 %; the current airspeed is left out of a mode's transit because it cannot tell apart modes sharing a controller; the ellipse (not a box) keeps the correlation of the two factors; the strict 95 % region after stiffness loss certified no mode at all |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
 
