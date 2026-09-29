@@ -41,6 +41,7 @@ class FTFeatures:
     residual_ratio: dict[str, float]  # one-step model residual per channel / healthy baseline
     noise_ratio: float  # high-frequency measurement content / healthy baseline
     loop_delay_ms: float  # measured by the flight computer
+    margin: dict | None = None  # latest on-board flutter-margin estimate (margin.MarginEstimate.to_dict()), if any
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -157,4 +158,27 @@ MODEL CONSISTENCY (nominal model's one-step prediction error, per channel):
 - Measurement high-frequency content: x{f.noise_ratio:.1f} of healthy baseline ({_level(f.noise_ratio)})
 
 SYSTEM:
-- Control loop delay: {f.loop_delay_ms:.0f} ms"""
+- Control loop delay: {f.loop_delay_ms:.0f} ms""" + format_physics(f)
+
+
+def format_physics(f: FTFeatures) -> str:
+    """The physics block of the report (only when the on-board margin estimator runs)."""
+    m = f.margin
+    if not m:
+        return ""
+    names = {"f_alpha": "pitch stiffness", "f_h": "plunge stiffness", "flap_span_fraction": "flap effectiveness"}
+    params = ", ".join(f"{names.get(k, k)} x{v:.2f} of healthy" for k, v in m["params"].items())
+    healthy = f.airspeed / f.airspeed_ratio
+    if m["flutter_speed"] is None:
+        flutter = "no flutter speed found in the analysis range"
+    else:
+        flutter = (f"{m['flutter_speed']:.1f} m/s (healthy wing {healthy:.1f} m/s); margin at the current airspeed "
+                   f"{100 * m['margin']:+.0f} % (negative: above the open-loop flutter speed, the controller holds it)")
+    modes = ", ".join(f"{mode} {'stable' if r < 1.0 else 'UNSTABLE'}" for mode, r in m["mode_spectral_radius"].items())
+    return f"""
+
+PHYSICS ESTIMATE (on-board identification of the wing, last {LOOKBACK_S:.0f} s, at {m['time']:.1f} s):
+- Identified: {params}
+- Estimated flutter speed: {flutter}
+- Predicted stability of each mode on the identified wing (worst case on the way to its airspeed): {modes}
+- Blind spots: this estimate cannot see actuator, sensor, loop-timing or turbulence problems."""

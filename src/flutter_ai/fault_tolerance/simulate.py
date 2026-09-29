@@ -120,11 +120,15 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                 baseline_window: tuple[float, float] = (0.5, 4.5), initial_mode: str = "nominal",
                 forced_mode: tuple[float, str] | None = None, apply_latency: bool = True,
                 bank_factory: Callable[[], dict[str, Controller]] = make_bank,
-                x0: tuple[float, float] = (0.0, 0.0)) -> FTResult:
+                x0: tuple[float, float] = (0.0, 0.0), margin_every_s: float | None = None) -> FTResult:
     """
     supervisor: object with decide(FTFeatures) -> FTDecision-like (mode, reasoning, source, latency_s) or None.
     forced_mode: (time, mode) to switch once at a fixed time (used by the oracle); overrides the supervisor.
     x0: initial (h [m], alpha [rad]) displacement (small-signal tests; the benchmark starts at rest).
+    margin_every_s: run the on-board flutter-margin estimator (margin.py) this often; the latest estimate is added to
+        the supervisor's features (physics-informed supervisors). None = no estimator.
+    Latency: every decision's latency_s is applied in simulation time (LLMs measure theirs; rule supervisors have 0
+    unless wrapped in a Delayed supervisor for the time-scale study).
     """
     n, rng = p.n_dof, np.random.default_rng(seed)
     n_t = int(round(duration / dt)) + 1
@@ -158,6 +162,7 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
     pending: list[FTDecision] = []
     switch_log: list[tuple[float, str, float]] = []
     last_ctrl_switch, next_sup = -1e9, baseline_window[1]
+    margin_base, next_margin, latest_margin = None, math.inf, None
     baseline: Baseline | None = None
     failed, failure_time, last = False, None, n_t - 1
 
@@ -180,6 +185,21 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
             i0 = int(baseline_window[0] / dt)
             res, noise = raw_features(p, U_level, dt, ys[i0:k], _applied_nominal(us, i0, k))
             baseline = Baseline(residual_rms=res, noise=noise, freq_hz=healthy_freq(p, ys[i0:k], dt))
+            if margin_every_s is not None:
+                from .margin import applied_commands, fit_window
+
+                margin_base = fit_window(p, U_level, dt, ys[i0:k], applied_commands(p, us, k, dt)[i0:k])
+                next_margin = tk
+
+        # on-board flutter-margin estimate from the last LOOKBACK_S (a physics-informed report block)
+        if margin_every_s is not None and baseline is not None and tk >= next_margin - 1e-12:
+            from .margin import applied_commands, estimate
+
+            next_margin += margin_every_s
+            a = max(0, k - int(LOOKBACK_S / dt))
+            est, _ = estimate(p, flutter_speed, tk, U_level, dt, ys[a:k], applied_commands(p, us, k, dt)[a:k],
+                              margin_base, cruise=cruise)
+            latest_margin = est.to_dict()
 
         # apply answers that have arrived. Only a change of inner-loop controller has to respect the dwell time; an
         # answer that would switch controllers too early is dropped and the supervisor is asked again (no stale
@@ -204,9 +224,10 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                 feats = extract(p, tk, U_level, flutter_speed, flutter_freq_hz, dt, ys[i0:k], us[i0:k],
                                 _applied_nominal(us, i0, k), mode, baseline,
                                 loop_delay_ms=1000 * dt * delay_at(fault, tk))
+                feats.margin = latest_margin
                 d = supervisor.decide(feats)
                 if d is not None:
-                    lag = d.latency_s if (apply_latency and d.source.startswith("llm")) else 0.0
+                    lag = d.latency_s if apply_latency else 0.0
                     d.applied_at = tk + lag
                     decisions.append(d)
                     pending.append(d)

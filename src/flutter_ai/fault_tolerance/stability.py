@@ -34,7 +34,7 @@ SPEEDS = (0.7, 0.8, 0.9, 1.0, 1.1)  # x nominal flutter speed: the autopilot's s
 DT = 0.005
 
 
-@functools.lru_cache(maxsize=64)
+@functools.lru_cache(maxsize=512)
 def _designs(p: WingParams, U: float, dt: float):
     """Controller-side matrices at airspeed U (cached: the margin estimator asks for the same speeds repeatedly)."""
     lqg = LQGController()

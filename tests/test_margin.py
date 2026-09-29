@@ -47,8 +47,10 @@ def test_structural_damage_is_identified_and_the_slow_down_trap_predicted(wing):
     assert est.params["f_alpha"] == pytest.approx(true_p.f_alpha / p.f_alpha, abs=0.03)
     assert est.flutter_speed == pytest.approx(flutter_analysis(true_p).flutter_speed, rel=0.07)
     rad = est.mode_spectral_radius
-    # holding speed stays stable; the moderate slow-down (and the neural controller) do not
-    assert rad["nominal"] < 1.0 and rad["cautious"] > 1.0 and rad["robust"] > 1.0 and rad["safe"] < 1.0
+    # holding speed stays stable; the moderate slow-down and the neural controller do not; the big slow-down passes
+    # through the unstable band on the way (in the benchmark, holding 'safe' after this fault kept only 70 % alive)
+    assert rad["nominal"] < 1.0 < min(rad["cautious"], rad["robust"])
+    assert rad["safe"] > rad["nominal"]
 
 
 def test_applied_commands_respect_delay_and_slew_limit():

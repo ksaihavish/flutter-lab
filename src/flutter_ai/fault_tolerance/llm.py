@@ -12,7 +12,7 @@ from __future__ import annotations
 from ..supervisor.llm import LLMSupervisor, make_llm_supervisor
 from .diagnostics import FTFeatures, format_ft_report
 from .simulate import FT_MODES, MODE_ORDER, FTDecision
-from .supervisors import FTRuleSupervisor
+from .supervisors import FTPhysicsRuleSupervisor, FTRuleSupervisor
 
 FT_SYSTEM_PROMPT = f"""You are the supervisory layer of an active flutter-suppression system on a small UAV wing.
 The wing cruises above its flutter speed: without active control it would flutter and break apart. A fast
@@ -34,13 +34,25 @@ Guidance:
 Respond with the mode and one or two sentences of reasoning that cite the report."""
 
 
-def make_ft_llm_supervisor(backend: str | None = None, **kwargs) -> LLMSupervisor:
+PHYSICS_GUIDANCE = """
+- If the report has a PHYSICS ESTIMATE, it comes from identifying the wing on board. A mode it predicts UNSTABLE
+  would let the wing flutter: do not choose it. It cannot see actuator, sensor, loop-timing or turbulence problems;
+  judge those from the other sections."""
+
+
+def make_ft_llm_supervisor(backend: str | None = None, physics: bool = False, **kwargs) -> LLMSupervisor:
+    """physics=True: the variant that receives the on-board physics estimate (same model, one extra guidance item,
+    physics-aware rule fallback)."""
     sup = make_llm_supervisor(backend, **kwargs)
-    sup.configure(system_prompt=FT_SYSTEM_PROMPT, modes=MODE_ORDER, format=format_ft_report,
+    prompt = FT_SYSTEM_PROMPT
+    if physics:
+        head, tail = FT_SYSTEM_PROMPT.split("\n\nRespond with")
+        prompt = head + PHYSICS_GUIDANCE + "\n\nRespond with" + tail
+    sup.configure(system_prompt=prompt, modes=MODE_ORDER, format=format_ft_report,
                   make=lambda f, mode, reasoning, source, latency: FTDecision(
                       time=f.time, mode=mode, reasoning=reasoning, source=source, latency_s=latency),
-                  fallback=FTRuleSupervisor())
-    sup.name = "llm"
+                  fallback=FTPhysicsRuleSupervisor() if physics else FTRuleSupervisor())
+    sup.name = "llm+physics" if physics else "llm"
     return sup
 
 

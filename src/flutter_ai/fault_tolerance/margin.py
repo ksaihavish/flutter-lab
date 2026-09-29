@@ -11,8 +11,9 @@ wing at the start of the flight (self-calibration).
 From the identified wing it reports:
   - its open-loop flutter speed and the margin to the current airspeed (with a 1-sigma band from the Gauss-Newton
     covariance, propagated by finite differences);
-  - for every supervisor mode, the spectral radius of the closed loop formed by that mode's controller (designed and
-    gain-scheduled for the healthy wing) and the identified wing at the mode's airspeed: < 1 = predicted stable.
+  - for every supervisor mode, the largest spectral radius of the closed loop formed by that mode's controller
+    (designed and gain-scheduled for the healthy wing) and the identified wing, over the airspeeds between the current
+    one and the mode's target (the autopilot passes through all of them): < 1 = predicted stable all the way.
 The prediction is linear (no saturation or rate limit) and covers only faults that change the wing's physics
 (stiffness, flap effectiveness); actuator, sensor, timing and turbulence faults leave the estimate unchanged.
 """
@@ -32,6 +33,7 @@ from .stability import mode_matrices
 
 PARAMS = ("f_alpha", "flap_span_fraction")
 BOUNDS = (0.3, 2.0)  # identified value / nominal
+PATH_POINTS = 9  # airspeeds checked between the current one and a mode's target
 
 
 @dataclass
@@ -117,12 +119,12 @@ def estimate(p: WingParams, flutter_speed_nominal: float, t: float, U: float, dt
         Uf_std = float(np.sqrt(np.sum((np.array(grad) * k_std) ** 2)))
     radius = {}
     cruise = cruise if cruise is not None else U
-    for m in modes:
+    for m in modes:  # worst case on the way: the autopilot passes every airspeed between here and the target
         ratio = FT_MODES[m]["speed_ratio"]
         Um = cruise if ratio is None else ratio * flutter_speed_nominal
-        Um = round(Um / SPEED_STEP) * SPEED_STEP
-        A = mode_matrices(p, Um, dt, plant=p_hat)[FT_MODES[m]["controller"]]
-        radius[m] = float(np.max(np.abs(np.linalg.eigvals(A))))
+        path = np.unique(np.round(np.linspace(U, Um, PATH_POINTS) / SPEED_STEP) * SPEED_STEP)
+        radius[m] = max(float(np.max(np.abs(np.linalg.eigvals(
+            mode_matrices(p, float(Us), dt, plant=p_hat)[FT_MODES[m]["controller"]])))) for Us in path)
     est = MarginEstimate(time=t, airspeed=U, params=dict(zip(names, map(float, k))),
                          params_std=dict(zip(names, map(float, k_std))), flutter_speed=Uf, flutter_speed_std=Uf_std,
                          margin=None if Uf is None else Uf / U - 1.0, mode_spectral_radius=radius,

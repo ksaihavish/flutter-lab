@@ -28,10 +28,12 @@ from ..params import WingParams
 from ..paths import OUTPUTS_DIR
 from .faults import FAULTS, benchmark_fault
 from .simulate import MODE_ORDER, ft_simulate
-from .supervisors import FTRandomSupervisor, FTRuleSupervisor, oracle_mode
+from .supervisors import FTPhysicsRuleSupervisor, FTRandomSupervisor, FTRuleSupervisor, oracle_mode
 
 DURATION = 30.0
-PAIRS = (("llm", "rules"), ("llm", "none"), ("rules", "none"), ("llm", "random"), ("rules", "random"))
+PAIRS = (("llm", "rules"), ("llm", "none"), ("rules", "none"), ("llm", "random"), ("rules", "random"),
+         ("rules+physics", "rules"), ("llm+physics", "llm"), ("llm+physics", "rules+physics"))
+MARGIN_EVERY_S = 1.0  # on-board estimator period for the physics-informed supervisors
 KEEP = ("failed", "failure_time_s", "cost_J", "slowed_s", "reaction_s", "first_response", "final_mode",
         "switches", "decisions", "llm_fallbacks")
 
@@ -41,6 +43,12 @@ def _make(kind: str, seed: int):
         return None
     if kind == "rules":
         return FTRuleSupervisor()
+    if kind == "rules+physics":
+        return FTPhysicsRuleSupervisor()
+    if kind == "llm+physics":
+        from .llm import make_ft_llm_supervisor
+
+        return make_ft_llm_supervisor(physics=True)
     if kind == "random":
         return FTRandomSupervisor(seed=seed)
     if kind == "llm":
@@ -101,14 +109,15 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
     if Uf is None or f_hz is None:
         raise ValueError(f"No flutter found for '{p.name}'")
     status = llm_status()
-    if "llm" in supervisors and not status["available"]:
-        say(f"LLM unavailable ({status['detail']}); skipping the LLM supervisor")
-        supervisors = tuple(s for s in supervisors if s != "llm")
+    if any(s.startswith("llm") for s in supervisors) and not status["available"]:
+        say(f"LLM unavailable ({status['detail']}); skipping the LLM supervisors")
+        supervisors = tuple(s for s in supervisors if not s.startswith("llm"))
     out_dir = Path(out_dir or OUTPUTS_DIR / p.name)
     out_dir.mkdir(parents=True, exist_ok=True)
     res: dict = {"metadata": {"version": __version__, "seeds": list(seeds), "duration_s": DURATION,
                               "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                              "llm": status if "llm" in supervisors else None,
+                              "llm": status if any(s.startswith("llm") for s in supervisors) else None,
+                              "margin_every_s": MARGIN_EVERY_S,
                               "apply_latency": apply_latency, "supervisor_interval_s": supervisor_interval,
                               "tag": tag,
                               "note": "Every value in this file is produced by flutter_ai.fault_tolerance.benchmark."},
@@ -133,9 +142,10 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
             per.setdefault("oracle", []).append({k: runs[best if best in runs else "safe"][k] for k in KEEP})
             for sup in supervisors:
                 r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s,
-                                apply_latency=apply_latency, supervisor_interval=supervisor_interval)
+                                apply_latency=apply_latency, supervisor_interval=supervisor_interval,
+                                margin_every_s=MARGIN_EVERY_S if sup.endswith("+physics") else None)
                 per.setdefault(sup, []).append({k: r.metrics[k] for k in KEEP})
-                if sup in ("llm", "rules"):
+                if sup != "random":
                     decisions += [{"supervisor": sup, "seed": s, "time": d.time, "mode": d.mode, "source": d.source,
                                    "latency_s": d.latency_s, "applied_at": d.applied_at, "outcome": d.outcome,
                                    "reasoning": d.reasoning} for d in r.decisions]
@@ -173,7 +183,8 @@ def _save(res: dict, everything: dict[str, list[dict]], out_dir: Path, t0: float
         "paired": {f"{a} vs {b}": paired(everything[a], everything[b]) for a, b in PAIRS
                    if a in everything and b in everything},
     }
-    llm_dec = [d for f in res["faults"].values() for d in f["decisions"] if d["supervisor"] == "llm" and d["source"] == "llm"]
+    llm_dec = [d for f in res["faults"].values() for d in f["decisions"]
+               if d["supervisor"].startswith("llm") and d["source"] == "llm"]
     if llm_dec:
         lat = np.array([d["latency_s"] for d in llm_dec])
         res["llm_latency_s"] = {"n": int(lat.size), "median": float(np.median(lat)), "p95": float(np.percentile(lat, 95))}

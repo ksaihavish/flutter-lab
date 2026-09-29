@@ -44,6 +44,46 @@ class FTRuleSupervisor:
         return FTDecision(time=f.time, mode=mode, reasoning=why, source=self.name)
 
 
+class FTPhysicsRuleSupervisor(FTRuleSupervisor):
+    """
+    The same symptom rules decide *whether* to act; the on-board physics estimate decides *which modes are safe*:
+    a mode predicted unstable on the identified wing is never chosen, and if the current mode is predicted unstable
+    the least disruptive predicted-stable mode is taken (hold speed first, then the smallest slow-down).
+    Written before any test on the benchmark seeds; not tuned on outcomes.
+    """
+
+    name = "rules+physics"
+
+    def decide(self, f: FTFeatures) -> FTDecision:
+        d = super().decide(f)
+        d.source = self.name
+        rad = (f.margin or {}).get("mode_spectral_radius")
+        if not rad:
+            return d
+        stable = [m for m in MODE_ORDER if rad.get(m, 0.0) < 1.0]
+        if d.mode in stable:
+            return d
+        if not stable:
+            return FTDecision(time=f.time, mode="safe", source=self.name,
+                              reasoning="Physics estimate: no mode predicted stable; take the largest margin.")
+        return FTDecision(time=f.time, mode=stable[0], source=self.name,
+                          reasoning=f"{d.reasoning} Physics estimate predicts '{d.mode}' unstable on the identified "
+                                    f"wing; least disruptive predicted-stable mode: '{stable[0]}'.")
+
+
+class Delayed:
+    """Wraps a supervisor so that its answers take `latency_s` to arrive (time-scale study)."""
+
+    def __init__(self, inner, latency_s: float):
+        self.inner, self.latency_s = inner, float(latency_s)
+        self.name = f"{inner.name}@{latency_s:g}s"
+
+    def decide(self, f: FTFeatures) -> FTDecision:
+        d = self.inner.decide(f)
+        d.latency_s = self.latency_s
+        return d
+
+
 class FTRandomSupervisor:
     name = "random"
 

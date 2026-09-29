@@ -9,6 +9,7 @@ Command-line interface.
     python -m flutter_ai ablations [--preset uav_flap]      ablation study (train variants with train --variant)
     python -m flutter_ai llm-benchmark [--preset uav_flap]  LLM supervisor experiments (slow) -> llm_benchmark.json
     python -m flutter_ai ft-benchmark [--preset uav_flap]   fault-tolerant supervision study -> ft_benchmark.json
+    python -m flutter_ai ft-timescale [--preset uav_flap]   latency x fault growth time map -> ft_timescale.json
     python -m flutter_ai ft-stability [--preset uav_flap]   dwell-time bound for switching -> ft_stability.json
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
     python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
@@ -117,6 +118,14 @@ def _llm_benchmark(args) -> None:
     run_llm_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)))
 
 
+def _ft_timescale(args) -> None:
+    from .fault_tolerance.timescale import SEEDS, run_timescale
+    from .params import get_preset
+
+    run_timescale(get_preset(args.preset), seeds=SEEDS[:args.seeds] if args.seeds <= len(SEEDS) else
+                  tuple(range(SEEDS[0], SEEDS[0] + args.seeds)), workers=args.workers or None)
+
+
 def _ft_benchmark(args) -> None:
     from .fault_tolerance.benchmark import run_ft_benchmark
     from .params import get_preset
@@ -124,7 +133,8 @@ def _ft_benchmark(args) -> None:
     sups = tuple(args.supervisors.split(",")) if args.supervisors else ("none", "rules", "random", "llm")
     if args.no_llm:
         sups = tuple(s for s in sups if s != "llm")
-    run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)), supervisors=sups,
+    run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.first_seed, args.first_seed + args.seeds)),
+                     supervisors=sups,
                      apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag)
 
 
@@ -209,6 +219,9 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--seeds", type=int, default=20)
     sp = add("llm-benchmark", _llm_benchmark, "LLM supervisor experiments (slow; uses FLUTTER_AI_LLM_BACKEND)")
     sp.add_argument("--seeds", type=int, default=5)
+    sp = add("ft-timescale", _ft_timescale, "time-scale map: supervisor latency x fault growth time (rules)")
+    sp.add_argument("--seeds", type=int, default=5)
+    sp.add_argument("--workers", type=int, default=0, help="parallel processes (default: half the CPU cores)")
     sp = add("ft-benchmark", _ft_benchmark, "fault-tolerant supervision study (slow with the LLM)")
     sp.add_argument("--seeds", type=int, default=20)
     sp.add_argument("--no-llm", action="store_true", help="skip the LLM supervisor")
@@ -217,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="ablation: apply answers at once (simulation time stops while the LLM thinks)")
     sp.add_argument("--interval", type=float, default=0.25, help="seconds between supervisor questions")
     sp.add_argument("--tag", default="", help="write ft_benchmark_<tag>.json instead of ft_benchmark.json")
+    sp.add_argument("--first-seed", type=int, default=0, help="first seed (fresh test set: e.g. 100)")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
