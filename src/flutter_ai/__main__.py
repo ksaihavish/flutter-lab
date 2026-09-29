@@ -11,6 +11,7 @@ Command-line interface.
     python -m flutter_ai ft-benchmark [--preset uav_flap]   fault-tolerant supervision study -> ft_benchmark.json
     python -m flutter_ai ft-timescale [--preset uav_flap]   latency x fault growth time map -> ft_timescale.json
     python -m flutter_ai ft-stability [--preset uav_flap]   dwell-time bound for switching -> ft_stability.json
+    python -m flutter_ai margin-eval [--preset uav_flap]    physics estimator on dev seeds -> margin_eval.json
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
     python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
     python -m flutter_ai check-data <folder>                validate an experimental dataset
@@ -138,6 +139,15 @@ def _ft_benchmark(args) -> None:
                      apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag)
 
 
+def _margin_eval(args) -> None:
+    from .fault_tolerance.margin_eval import run_margin_eval
+    from .params import get_preset
+
+    seeds = tuple(range(args.first_seed, args.first_seed + args.seeds))
+    run_margin_eval(get_preset(args.preset), seeds=seeds, compare_seeds=seeds[:args.compare_seeds],
+                    every_s=args.every, workers=args.workers)
+
+
 def _ft_stability(args) -> None:
     from .fault_tolerance.stability import run_stability
     from .params import get_preset
@@ -232,6 +242,12 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--tag", default="", help="write ft_benchmark_<tag>.json instead of ft_benchmark.json")
     sp.add_argument("--first-seed", type=int, default=0, help="first seed (fresh test set: e.g. 100)")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
+    sp = add("margin-eval", _margin_eval, "evaluate the on-board physics estimator (v1, v2) on development seeds")
+    sp.add_argument("--seeds", type=int, default=5, help="number of development seeds (from --first-seed)")
+    sp.add_argument("--first-seed", type=int, default=1000, help="first seed (>= 1000; lower seeds are reserved)")
+    sp.add_argument("--compare-seeds", type=int, default=5, help="seeds (of those) for the supervisor comparison")
+    sp.add_argument("--every", type=float, default=1.0, help="seconds between replayed estimates")
+    sp.add_argument("--workers", type=int, default=4, help="parallel processes (at most 4)")
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
     sp.add_argument("--port", type=int, default=8000)

@@ -175,10 +175,47 @@ def format_physics(f: FTFeatures) -> str:
         flutter = (f"{m['flutter_speed']:.1f} m/s (healthy wing {healthy:.1f} m/s); margin at the current airspeed "
                    f"{100 * m['margin']:+.0f} % (negative: above the open-loop flutter speed, the controller holds it)")
     modes = ", ".join(f"{mode} {'stable' if r < 1.0 else 'UNSTABLE'}" for mode, r in m["mode_spectral_radius"].items())
-    return f"""
+    head = f"""
 
 PHYSICS ESTIMATE (on-board identification of the wing, last {LOOKBACK_S:.0f} s, at {m['time']:.1f} s):
 - Identified: {params}
 - Estimated flutter speed: {flutter}
-- Predicted stability of each mode on the identified wing (worst case on the way to its airspeed): {modes}
-- Blind spots: this estimate cannot see actuator, sensor, loop-timing or turbulence problems."""
+- Predicted stability of each mode on the identified wing (worst case on the way to its airspeed): {modes}"""
+    if "modes" not in m:  # v1 estimate (margin.estimate): unchanged block
+        return head + "\n- Blind spots: this estimate cannot see actuator, sensor, loop-timing or turbulence problems."
+    return head + _physics_v2_lines(m)
+
+
+def _physics_v2_lines(m: dict) -> str:
+    """The v2 estimator's extra lines (margin.MarginEstimateV2): robust margins, disturbances, authority, verdict."""
+    v2 = m["modes"]
+    conf = f"{100 * m['confidence']:.0f} %"
+    if m["flutter_speed_worst"] is None:
+        worst = "no flutter speed found in the analysis range"
+    else:
+        worst = f"flutter speed {m['flutter_speed_worst']:.1f} m/s (margin {100 * m['margin_worst']:+.0f} %)"
+    robust = ", ".join(f"{k} {'yes' if all_ok else 'NO'}" for k, all_ok in
+                       ((k, v["stable_share"] >= 1.0) for k, v in v2.items()))
+
+    def authority(v: dict) -> str:
+        if v["authority_ratio"] is None:
+            return "unstable there"
+        text = f"x{v['authority_ratio']:.2f}"
+        return (text + " SATURATES") if v["control_needed"] and v["authority_ratio"] >= 1.0 else (
+            text if v["control_needed"] else text + " (below the flutter speed: control not needed)")
+
+    admissible = [k for k, v in v2.items() if v["admissible"]]
+    point = [k for k, v in v2.items() if v["admissible_point"]]
+    verdict = (", ".join(admissible) if admissible else
+               "none robustly; on the point estimate: " + (", ".join(point) if point else "none"))
+    return f"""
+- Worst case over the {conf} confidence region of the identification: {worst}; stable on every wing of the region \
+(on the way to each mode's airspeed): {robust}
+- Disturbances (estimated): turbulence {m['turbulence_rms']:.2f} m/s RMS (take-off level 0.25 m/s), sensor noise \
+{100 * m['noise_std']:.1f} % of the reference scales; measured loop delay ({m['delay_samples']} samples) used in \
+every prediction
+- Control authority at each mode's airspeed (predicted 3-sigma flap command or rate / its limit; >= 1 saturates): \
+{", ".join(f"{k} {authority(v)}" for k, v in v2.items())}
+- Admissible modes (stable on every wing of the region and enough authority): {verdict}
+- Blind spots: a slower servo; sensor noise biases the identified stiffness upward; the estimate describes the last \
+{LOOKBACK_S:.0f} s and predicts the linear response, not how a growing fault or a saturated flap will develop."""

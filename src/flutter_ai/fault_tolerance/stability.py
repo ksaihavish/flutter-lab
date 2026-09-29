@@ -51,9 +51,23 @@ def _designs(p: WingParams, U: float, dt: float):
     return K, lqg._L, lqg._A, lqg._B, lqg._C, Knn, nn.observer
 
 
-def mode_matrices(p: WingParams, U: float, dt: float = DT, plant: WingParams | None = None) -> dict[str, np.ndarray]:
+def mode_matrices(p: WingParams, U: float, dt: float = DT, plant: WingParams | None = None,
+                  delay: int = 1) -> dict[str, np.ndarray]:
     """Closed-loop matrices on the shared bank state for the LQG-active and neural-active modes at airspeed U.
-    The controllers are designed for p; `plant` (default p) is the wing they act on, e.g. an identified damaged wing."""
+    The controllers are designed for p; `plant` (default p) is the wing they act on, e.g. an identified damaged wing.
+    `delay`: the plant's loop delay in samples (>= 1). The controllers keep their 1-sample design (as in ft_simulate);
+    for delay d the state carries the commands still in flight: xi = [x, x_pred, z, u_{k-1}, ..., u_{k-d}]."""
+    return {k: v[0] for k, v in mode_systems(p, U, dt, plant, delay).items()}
+
+
+def mode_systems(p: WingParams, U: float, dt: float = DT, plant: WingParams | None = None,
+                 delay: int = 1) -> dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """(A, G, V) per active controller: xi_{k+1} = A xi_k + G w_k + V v_k, with w_k the vertical gust velocity [m/s]
+    entering the plant through its gust column (as in ft_simulate) and v_k the measurement noise added to y = [q, q']
+    (every controller and estimator in the bank sees the same noisy y). G and V drive the authority prediction
+    (margin.command_statistics); stability only needs A."""
+    if delay < 1:
+        raise ValueError(f"delay must be >= 1 sample (the bank's design delay), got {delay}")
     n2 = 2 * p.n_dof
     sys = discrete_state_space(plant or p, U, dt)
     N, m = sys.Bd.shape
@@ -62,13 +76,16 @@ def mode_matrices(p: WingParams, U: float, dt: float = DT, plant: WingParams | N
     ix = slice(0, N)
     ip = slice(N, 2 * N + 1)
     iz = slice(2 * N + 1, 2 * N + 3)
-    iu = slice(2 * N + 3, 2 * N + 3 + m)
-    S = 2 * N + 3 + m
+    iu = slice(2 * N + 3, 2 * N + 3 + m)  # u_{k-1}: the last command, which every controller feeds back
+    iud = slice(2 * N + 3 + (delay - 1) * m, 2 * N + 3 + delay * m)  # u_{k-delay}: the one reaching the servo now
+    S = 2 * N + 3 + delay * m
     C = np.zeros((n2, N))
     C[:, :n2] = np.eye(n2)
     base = np.zeros((S, S))
     base[ix, ix] = sys.Ad
-    base[ix, iu] = sys.Bd  # applied input = previous command (1-sample delay)
+    base[ix, iud] = sys.Bd  # applied input = the command sent `delay` samples ago
+    for j in range(1, delay):  # shift register of the commands in flight
+        base[2 * N + 3 + j * m:2 * N + 3 + (j + 1) * m, 2 * N + 3 + (j - 1) * m:2 * N + 3 + j * m] = np.eye(m)
     # LQG filter: est = (I - L Cl) x_pred + L C x ;  x_pred' = Al est + Bl u_{k-1}
     E_pred = np.eye(N + 1) - L @ Cl
     E_x = L @ C
@@ -78,19 +95,28 @@ def mode_matrices(p: WingParams, U: float, dt: float = DT, plant: WingParams | N
     # neural observer: z' = decay z + gain (w_row . y)
     base[iz, iz] = np.diag(obs.decay)
     base[iz, ix] = np.outer(obs.gain, obs.w_row) @ C
+    G = np.zeros((S, 1))
+    G[ix, 0] = sys.Gd[:, 0]
+    V = np.zeros((S, n2))
+    V[ip] = Al @ L
+    V[iz] = np.outer(obs.gain, obs.w_row)
     out = {}
     # LQG active: u_k = -K_est est - K_u u_{k-1}
     A = base.copy()
     A[iu, ip] = -K[:, :N + 1] @ E_pred
     A[iu, ix] = -K[:, :N + 1] @ E_x
     A[iu, iu] = -K[:, N + 1:]
-    out["lqg"] = A
+    Vl = V.copy()
+    Vl[iu] = -K[:, :N + 1] @ L
+    out["lqg"] = (A, G, Vl)
     # neural active: u_k = -Knn [C x, z, u_{k-1}]
     A = base.copy()
     A[iu, ix] = -Knn[:, :n2] @ C
     A[iu, iz] = -Knn[:, n2:n2 + 2]
     A[iu, iu] = -Knn[:, n2 + 2:]
-    out["neural"] = A
+    Vn = V.copy()
+    Vn[iu] = -Knn[:, :n2]
+    out["neural"] = (A, G, Vn)
     return out
 
 
