@@ -38,3 +38,45 @@ running 2026-09-29), then a stronger model (Claude backend), then a report with 
 4. **Time-scale map (idea 2):** sweep fault growth time and supervisor latency; where does each supervisor keep up?
 5. Between flights (owner's continual-learning idea): the LLM reviews logs and proposes training scenarios; a
    retrained policy is accepted only if it passes the full benchmark and the stability checks (verification gate).
+
+## Learned fault diagnoser (fast encoder, built 2026-09-29)
+
+Owner's direction: the on-board LLM is too slow and too passive to supervise faults; a fast learned model should
+analyse the on-board data, and an LLM should only explain. Built in `fault_tolerance/diagnoser*.py`; commands
+`train-diagnoser` and `eval-diagnoser`. Every number lives in `models/diagnoser_uav_flap.json` (training, validation,
+thresholds) and `outputs/uav_flap/diagnoser_eval.json` (evaluation); figure `outputs/uav_flap/fig14_diagnoser.png`.
+
+- **Input** (every 0.5 s, last 2.5 s of data, only on-board information): one feature vector: the nominal model's
+  one-step residual per rate channel (with each sample's airspeed and the servo's known slew limit), high-frequency
+  content and RMS per displacement, command rate, one Gauss-Newton step of margin.py's pitch-stiffness fit, pitch
+  frequency shift, saturation, peak motion, energy trend, and context (airspeed, speed change, neural share), scaled
+  by the take-off baseline. Features rather than raw signals: the signatures are known physics and the model stays
+  tiny. The measured loop timing is deliberately *not* an input (a one-line check catches it), so the held-out loop
+  delay tests its dynamic symptoms.
+- **Model** (pure NumPy inference; torch only in training): encoder to an 8-d embedding, a multi-label head (sigmoid
+  per known fault: servo_slew, stiffness_loss, sensor_noise, turbulence_rise; combinations allowed) and a decoder.
+  Unknown-fault score = reconstruction error, chosen before any evaluation; a Mahalanobis distance in the embedding
+  is reported as a secondary score only. A detection counts when it holds at two consecutive diagnoses.
+- **Data** (`diagnoser_data.py`): randomised 30 s flights with `ft_simulate`: healthy, one, two or three simultaneous
+  faults (`faults.CompositeFault`), random onset, growth time and size, three ways of flying (no supervisor, the
+  rules, a forced mode change) so slowed-down and neural-controller flights occur with and without faults. Disjoint
+  seed ranges >= 1000 for train / validation / evaluation. **loop_delay and flap_effectiveness never appear in
+  training or calibration** (checked in code and tests); they are only in the evaluation split `eval_held_out`.
+  `eval_benchmark` repeats the fault-tolerant benchmark's conditions.
+- **Calibration** (validation flights only): probability threshold 0.5 (not tuned); unknown-fault threshold such that
+  at most 5 % of validation flights (healthy or known faults) raise a confirmed unknown alarm.
+- **Integration hooks** (no supervisor uses them yet): `ft_simulate(..., diagnose_every_s=0.5)` fills
+  `FTFeatures.diagnosis`; `diagnostics.format_diagnosis` appends a "LEARNED DIAGNOSIS" block to the report, so an
+  LLM (or a person) can explain the model's output. A test checks that the on-board path computes exactly the
+  features the model was trained on.
+- **What the evaluation shows** (numbers in `diagnoser_eval.json`): sensor noise, stiffness loss and rising
+  turbulence are recognised reliably within a few seconds of onset, also in combinations; a slower servo is the weak
+  class, because it is physically latent until the flap is asked to move faster than the degraded limit (after a
+  slow-down it can stay invisible); the known-fault alarms raise false alarms in healthy flights forced into the `safe`
+  mode (a rare regime in training); the held-out loop delay mostly triggers the unknown alarm, while flap damage
+  mostly does not (it resembles rising turbulence plus a slow servo), although nearly every held-out flight raises
+  *some* alarm. The secondary Mahalanobis score does better on flap damage and worse on the loop delay, and it
+  saturates far from the data (the tanh encoder bounds the embedding).
+- **Next:** a supervisor that acts on the diagnosis (known fault -> the pre-verified response, unknown -> the most
+  conservative mode) compared on fresh test seeds with rules and the LLM; more `safe`-mode and slow-servo training
+  data; an LLM that only explains the diagnosis block.

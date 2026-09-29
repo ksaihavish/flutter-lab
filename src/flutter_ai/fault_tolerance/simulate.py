@@ -26,7 +26,7 @@ from ..metrics import COST_AGGRESSIVENESS
 from ..model import discrete_state_space, initial_state
 from ..params import WingParams
 from .diagnostics import LOOKBACK_S, Baseline, FTFeatures, extract, healthy_freq, raw_features
-from .faults import Fault, delay_at, gust_gain_at, plant_at, sensor_noise_at
+from .faults import AnyFault, delay_at, gust_gain_at, plant_at, sensor_noise_at
 
 FT_MODES: dict[str, dict] = {
     "nominal": {"controller": "lqg", "speed_ratio": None,
@@ -92,7 +92,7 @@ class FTDecision:
 
 @dataclass
 class FTResult:
-    fault: Fault
+    fault: AnyFault
     supervisor: str
     t: np.ndarray
     x: np.ndarray
@@ -113,20 +113,24 @@ def _applied_nominal(us: np.ndarray, i0: int, k: int) -> np.ndarray:
     return np.vstack([prev, us[i0:k - 1]])
 
 
-def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fault: Fault,
+def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fault: AnyFault,
                 supervisor=None, *, duration: float = 30.0, dt: float = 0.005, cruise_ratio: float = 1.1,
                 turbulence_rms: float = 0.25, correlation_time: float = 0.05, seed: int = 0,
                 supervisor_interval: float = 0.25, min_dwell_s: float = MIN_DWELL_S, decel: float = 2.0,
                 baseline_window: tuple[float, float] = (0.5, 4.5), initial_mode: str = "nominal",
                 forced_mode: tuple[float, str] | None = None, apply_latency: bool = True,
                 bank_factory: Callable[[], dict[str, Controller]] = make_bank,
-                x0: tuple[float, float] = (0.0, 0.0), margin_every_s: float | None = None) -> FTResult:
+                x0: tuple[float, float] = (0.0, 0.0), margin_every_s: float | None = None,
+                diagnose_every_s: float | None = None, diagnoser=None) -> FTResult:
     """
+    fault: a Fault or a CompositeFault (several at once).
     supervisor: object with decide(FTFeatures) -> FTDecision-like (mode, reasoning, source, latency_s) or None.
     forced_mode: (time, mode) to switch once at a fixed time (used by the oracle); overrides the supervisor.
     x0: initial (h [m], alpha [rad]) displacement (small-signal tests; the benchmark starts at rest).
     margin_every_s: run the on-board flutter-margin estimator (margin.py) this often; the latest estimate is added to
         the supervisor's features (physics-informed supervisors). None = no estimator.
+    diagnose_every_s: run the learned fault diagnoser (diagnoser.py) this often; the latest diagnosis is added to the
+        supervisor's features. None = off. diagnoser: a DiagnoserModel (default: the trained one for this preset).
     Latency: every decision's latency_s is applied in simulation time (LLMs measure theirs; rule supervisors have 0
     unless wrapped in a Delayed supervisor for the time-scale study).
     """
@@ -163,6 +167,7 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
     switch_log: list[tuple[float, str, float]] = []
     last_ctrl_switch, next_sup = -1e9, baseline_window[1]
     margin_base, next_margin, latest_margin = None, math.inf, None
+    on_board_diagnoser, next_diag, latest_diag = None, math.inf, None
     baseline: Baseline | None = None
     failed, failure_time, last = False, None, n_t - 1
 
@@ -190,6 +195,19 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
 
                 margin_base = fit_window(p, U_level, dt, ys[i0:k], applied_commands(p, us, k, dt)[i0:k])
                 next_margin = tk
+            if diagnose_every_s is not None:
+                from .diagnoser import DiagnoserModel, FlightDiagnoser, baseline_stats, model_path
+
+                model = diagnoser if diagnoser is not None else DiagnoserModel.load(model_path(p.name))
+                on_board_diagnoser = FlightDiagnoser(model, p, flutter_speed, dt,
+                                                     baseline_stats(p, dt, ys, us, speeds, modes, k,
+                                                                    baseline_window[0]))
+                next_diag = tk
+
+        # learned fault diagnosis of the last diagnoser.WINDOW_S (independent of the supervisor's schedule)
+        if on_board_diagnoser is not None and diagnose_every_s is not None and tk >= next_diag - 1e-12:
+            next_diag += diagnose_every_s
+            latest_diag = on_board_diagnoser(tk, ys, us, speeds, modes, k)
 
         # on-board flutter-margin estimate from the last LOOKBACK_S (a physics-informed report block)
         if margin_every_s is not None and baseline is not None and tk >= next_margin - 1e-12:
@@ -225,6 +243,7 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
                                 _applied_nominal(us, i0, k), mode, baseline,
                                 loop_delay_ms=1000 * dt * delay_at(fault, tk))
                 feats.margin = latest_margin
+                feats.diagnosis = latest_diag
                 d = supervisor.decide(feats)
                 if d is not None:
                     lag = d.latency_s if apply_latency else 0.0
