@@ -15,6 +15,7 @@ schedule. Speed changes themselves (gain scheduling) are slow and outside this a
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 from pathlib import Path
@@ -33,24 +34,30 @@ SPEEDS = (0.7, 0.8, 0.9, 1.0, 1.1)  # x nominal flutter speed: the autopilot's s
 DT = 0.005
 
 
-def mode_matrices(p: WingParams, U: float, dt: float = DT) -> dict[str, np.ndarray]:
-    """Closed-loop matrices on the shared bank state for the LQG-active and neural-active modes at airspeed U."""
-    n2 = 2 * p.n_dof
-    sys = discrete_state_space(p, U, dt)
-    N, m = sys.Bd.shape
+@functools.lru_cache(maxsize=64)
+def _designs(p: WingParams, U: float, dt: float):
+    """Controller-side matrices at airspeed U (cached: the margin estimator asks for the same speeds repeatedly)."""
     lqg = LQGController()
     lqg.reset(p, U, dt, 1)
     K = lqg._gain()  # u = -K [est (N+1), u_{k-1}]
-    L, Al, Bl, Cl = lqg._L, lqg._A, lqg._B, lqg._C
     nn = NeuralController()
     nn.reset(p, U, dt, 1)
     pol = nn._policy
     if pol is None:
         raise RuntimeError("neural policy not loaded")
     Knn = pol.linearize(U / nn.flutter_speed, 0.5)  # u = -Knn [y, z, u_{k-1}]
-    obs = nn.observer
-    if obs is None:
+    if nn.observer is None:
         raise RuntimeError("observer not initialised")
+    return K, lqg._L, lqg._A, lqg._B, lqg._C, Knn, nn.observer
+
+
+def mode_matrices(p: WingParams, U: float, dt: float = DT, plant: WingParams | None = None) -> dict[str, np.ndarray]:
+    """Closed-loop matrices on the shared bank state for the LQG-active and neural-active modes at airspeed U.
+    The controllers are designed for p; `plant` (default p) is the wing they act on, e.g. an identified damaged wing."""
+    n2 = 2 * p.n_dof
+    sys = discrete_state_space(plant or p, U, dt)
+    N, m = sys.Bd.shape
+    K, L, Al, Bl, Cl, Knn, obs = _designs(p, U, dt)
 
     ix = slice(0, N)
     ip = slice(N, 2 * N + 1)

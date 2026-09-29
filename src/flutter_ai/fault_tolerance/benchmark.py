@@ -84,7 +84,13 @@ def _slow(x: float | None) -> str:
 
 
 def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none", "rules", "random", "llm"),
-                     out_dir: Path | None = None, make_figure: bool = True, log=print) -> dict:
+                     out_dir: Path | None = None, make_figure: bool = True, log=print, *, apply_latency: bool = True,
+                     supervisor_interval: float = 0.25, tag: str = "", faults: tuple[str, ...] | None = None) -> dict:
+    """
+    Ablations: apply_latency=False applies every answer at once (simulation time stops while the LLM thinks), which
+    separates judgement from speed; supervisor_interval sets how often every supervisor is asked. A tag writes
+    ft_benchmark_<tag>.json / fig12_fault_tolerance_<tag>.png, so the main result file is never overwritten.
+    """
     from ..supervisor import llm_status
 
     def say(msg: str) -> None:
@@ -103,11 +109,17 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
     res: dict = {"metadata": {"version": __version__, "seeds": list(seeds), "duration_s": DURATION,
                               "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                               "llm": status if "llm" in supervisors else None,
+                              "apply_latency": apply_latency, "supervisor_interval_s": supervisor_interval,
+                              "tag": tag,
                               "note": "Every value in this file is produced by flutter_ai.fault_tolerance.benchmark."},
                  "faults": {}}
     t0 = time.time()
     everything: dict[str, list[dict]] = {}
+    suffix = f"_{tag}" if tag else ""
+    res["metadata"]["file"] = f"ft_benchmark{suffix}.json"
     for kind, spec in FAULTS.items():
+        if faults is not None and kind not in faults:
+            continue
         fault = benchmark_fault(kind)
         per: dict[str, list[dict]] = {}
         decisions: list[dict] = []
@@ -120,7 +132,8 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
                 mode_table[m].append(runs[m])
             per.setdefault("oracle", []).append({k: runs[best if best in runs else "safe"][k] for k in KEEP})
             for sup in supervisors:
-                r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s)
+                r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s,
+                                apply_latency=apply_latency, supervisor_interval=supervisor_interval)
                 per.setdefault(sup, []).append({k: r.metrics[k] for k in KEEP})
                 if sup in ("llm", "rules"):
                     decisions += [{"supervisor": sup, "seed": s, "time": d.time, "mode": d.mode, "source": d.source,
@@ -144,12 +157,12 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
         say(f"  pooled {label:16s}: survived only by candidate {st['survived_only_candidate']:3d}, only by reference "
             f"{st['survived_only_reference']:3d} (McNemar p = {st['mcnemar_p']:.2g}); slowed diff over "
             f"{st['n_both_survived']} flights both survived: {_slow(st['slowed_s_mean_diff'])}")
-    path = out_dir / "ft_benchmark.json"
+    path = out_dir / res["metadata"]["file"]
     say(f"Saved {path}")
     if make_figure:
         from .. import plots
 
-        say(f"Saved {plots.ft_figure(res, out_dir / 'fig12_fault_tolerance.png')}")
+        say(f"Saved {plots.ft_figure(res, out_dir / f'fig12_fault_tolerance{suffix}.png')}")
     return res
 
 
@@ -166,4 +179,4 @@ def _save(res: dict, everything: dict[str, list[dict]], out_dir: Path, t0: float
         res["llm_latency_s"] = {"n": int(lat.size), "median": float(np.median(lat)), "p95": float(np.percentile(lat, 95))}
     res["metadata"]["wall_time_s"] = round(time.time() - t0, 1)
     res["metadata"]["complete"] = set(res["faults"]) == set(FAULTS)
-    (out_dir / "ft_benchmark.json").write_text(json.dumps(res, indent=2))
+    (out_dir / res["metadata"]["file"]).write_text(json.dumps(res, indent=2))

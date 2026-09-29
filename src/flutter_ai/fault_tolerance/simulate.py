@@ -98,6 +98,7 @@ class FTResult:
     x: np.ndarray
     u: np.ndarray
     airspeed: np.ndarray
+    y: np.ndarray  # measurements (with sensor noise)
     mode: list[str]
     decisions: list[FTDecision]
     failed: bool
@@ -244,7 +245,7 @@ def ft_simulate(p: WingParams, flutter_speed: float, flutter_freq_hz: float, fau
 
     sl = slice(0, last + 1)
     result = FTResult(fault=fault, supervisor=getattr(supervisor, "name", "none") if forced_mode is None else
-                      f"fixed:{forced_mode[1]}", t=t[sl], x=xs[sl], u=us[sl], airspeed=speeds[sl],
+                      f"fixed:{forced_mode[1]}", t=t[sl], x=xs[sl], u=us[sl], airspeed=speeds[sl], y=ys[sl],
                       mode=modes[:last + 1], decisions=decisions, failed=failed, failure_time=failure_time,
                       switch_log=switch_log)
     result.metrics = ft_metrics(result, p, cruise, dt)

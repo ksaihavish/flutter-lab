@@ -121,8 +121,11 @@ def _ft_benchmark(args) -> None:
     from .fault_tolerance.benchmark import run_ft_benchmark
     from .params import get_preset
 
-    sups = ("none", "rules", "random") + (() if args.no_llm else ("llm",))
-    run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)), supervisors=sups)
+    sups = tuple(args.supervisors.split(",")) if args.supervisors else ("none", "rules", "random", "llm")
+    if args.no_llm:
+        sups = tuple(s for s in sups if s != "llm")
+    run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.seeds)), supervisors=sups,
+                     apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag)
 
 
 def _ft_stability(args) -> None:
@@ -209,6 +212,11 @@ def main(argv: list[str] | None = None) -> int:
     sp = add("ft-benchmark", _ft_benchmark, "fault-tolerant supervision study (slow with the LLM)")
     sp.add_argument("--seeds", type=int, default=20)
     sp.add_argument("--no-llm", action="store_true", help="skip the LLM supervisor")
+    sp.add_argument("--supervisors", default="", help="comma-separated subset, e.g. none,rules,llm")
+    sp.add_argument("--no-latency", action="store_true",
+                    help="ablation: apply answers at once (simulation time stops while the LLM thinks)")
+    sp.add_argument("--interval", type=float, default=0.25, help="seconds between supervisor questions")
+    sp.add_argument("--tag", default="", help="write ft_benchmark_<tag>.json instead of ft_benchmark.json")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
     sp = add("serve", _serve, "start the web app")
     sp.add_argument("--host", default="127.0.0.1")
