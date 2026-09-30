@@ -25,6 +25,7 @@ export const api = {
   scenarios: (preset) => request(`/api/scenarios?preset=${encodeURIComponent(preset || "uav_flap")}`),
   flutter: (preset) => request("/api/flutter", { method: "POST", body: JSON.stringify({ preset }) }),
   simulate: (body) => request("/api/simulate", { method: "POST", body: JSON.stringify(body) }),
+  survival: (body) => request("/api/survival", { method: "POST", body: JSON.stringify(body) }),
   // Guardian live view (src/flutter_ai/api/guardian.py): start a flight, poll it, play back the recording
   guardianOptions: () => request("/api/guardian/options"),
   guardianStart: (body) => request("/api/guardian/flights", { method: "POST", body: JSON.stringify(body) }),

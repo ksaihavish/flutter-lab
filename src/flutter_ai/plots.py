@@ -298,6 +298,65 @@ def robustness_figure(res: dict, path: Path) -> Path:
     return path
 
 
+
+def envelope_figure(res: dict, path: Path) -> Path:
+    """Survival vs airspeed per controller (real servo solid, slew limit removed dashed), the linear loop's growth
+    rate, and how often the commanded flap rate exceeds the real servo's limit (envelope.py)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ctrls, ratios, uf = res["controllers"], res["ratios"], res["flutter_speed"]
+    band = res.get("neural_training_range")
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
+    titles = {"turbulence_patch": "Turbulence patch", "discrete_gust": "Discrete (1 - cos) gust"}
+    for ax, (sc, by_servo) in zip(axes[0], res["scenarios"].items()):
+        for c in ctrls:
+            for sv, style in (("actual", "-"), ("unlimited", "--")):
+                rows = by_servo.get(sv, {}).get(c)
+                if rows:
+                    ax.plot([r["ratio"] for r in rows], [100 * (1 - r["failures"] / r["n"]) for r in rows], style,
+                            color=CASE_COLORS.get(c, INK2), marker="o" if sv == "actual" else None, ms=4,
+                            label=CASE_LABELS.get(c, c) if sv == "actual" else None)
+        ax.set_ylim(-4, 104)
+        ax.set_ylabel(f"Flights within limits (%, {len(res['metadata']['seeds'])} seeds)")
+        ax.set_title(titles.get(sc, sc))
+    lim = res.get("servo_rate_limit_deg_s")
+    axes[0, 0].plot([], [], "-", color=INK2, label=f"servo {lim[0]:.0f}°/s" if lim else "actuator as designed")
+    axes[0, 0].plot([], [], "--", color=INK2, label="slew limit removed")
+    axes[0, 0].legend(loc="lower left")
+
+    ss = res["small_signal"]
+    ax = axes[1, 0]
+    for c in ["open_loop", *ctrls]:
+        ys = [ss[f"{r:.2f}"].get(c, {}).get("growth_per_s", np.nan) for r in ratios]
+        ax.plot(ratios, ys, color=CASE_COLORS.get(c, INK2), marker="o", ms=4, label=CASE_LABELS.get(c, c),
+                lw=1.2 if c == "open_loop" else 1.6)
+    ax.axhline(0.0, color=AXIS, lw=1.0)
+    ax.set_ylabel("Growth rate of the slowest-decaying mode (1/s)")
+    ax.set_title("Linear loop (no saturation): above 0 = unstable")
+    ax.legend(loc="upper left")
+
+    ax = axes[1, 1]
+    turb = res["scenarios"].get("turbulence_patch", {}).get("unlimited", {})
+    for c in ctrls:
+        rows = turb.get(c) or []
+        ax.plot([r["ratio"] for r in rows], [100 * (r["rate_above_limit"] or 0.0) for r in rows],
+                color=CASE_COLORS.get(c, INK2), marker="o", ms=4)
+    ax.set_ylabel("Commanded flap rate above the servo limit (% of steps)")
+    ax.set_title("Turbulence, slew limit removed: rate the servo would need")
+    for ax in axes.flat:
+        if band:
+            ax.axvspan(band[0], band[1], color=GRID, alpha=0.45, lw=0, zorder=0)
+        ax.axvline(1.0, color=MUTED, lw=0.8, ls=":")
+    for ax in axes[1]:
+        ax.set_xlabel(f"Airspeed / flutter speed (U_F = {uf:.1f} m/s)")
+    if band:
+        axes[0, 1].text(band[0] + 0.01, 2, "neural training range", color=INK2, fontsize=7.5, va="bottom")
+    fig.suptitle(f"Operating envelope, {res['preset']}: controllers gain-scheduled at the flown airspeed")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
 def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
     """LLM latency, and where supervised runs land relative to the fixed-aggressiveness trade-off curves."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))

@@ -34,6 +34,33 @@ def test_simulate_returns_time_series_and_metrics():
     assert "rms_h_mm" in res["metrics"]
 
 
+def test_survival_check_seed0_is_the_run_shown(monkeypatch):
+    """The multi-seed check's seed 0 is the flight /api/simulate shows; other seeds draw new disturbances."""
+    monkeypatch.setenv("FLUTTER_AI_WORKERS", "0")  # in-process (a pool cannot re-import a pytest __main__)
+    scenario = {"velocity_ratio": 1.1, "duration": 2.0, "gust": {"kind": "turbulence", "amplitude": 0.5, "start": 0.2,
+                                                                  "duration": 1.5, "seed": 3}}
+    cases = [{"controller": "open_loop"}, {"controller": "lqr"}]
+    sim = client.post("/api/simulate", json={"cases": cases, "scenario": scenario}).json()
+    r = client.post("/api/survival", json={"cases": cases, "scenario": scenario, "n_seeds": 3})
+    assert r.status_code == 200, r.text
+    rows = r.json()["results"]
+    for row, res in zip(rows, sim["results"]):
+        assert row["n_seeds"] == 3 and len(row["survived_per_seed"]) == 3
+        assert row["survived"] == sum(row["survived_per_seed"])
+        assert row["survived_per_seed"][0] == (not res["metrics"]["exceeded_limits"])
+    assert rows[0]["survived"] == 0  # open loop above flutter fails every draw
+    llm = client.post("/api/survival", json={"cases": [{"controller": "lqr", "supervisor": "llm"}], "n_seeds": 2})
+    assert llm.status_code == 422
+
+
+def test_presets_report_neural_training_range():
+    flap = next(p for p in client.get("/api/presets").json() if p["name"] == "uav_flap")
+    if flap["neural_policy_available"]:
+        lo, hi = flap["neural_training_range"]
+        assert 0 < lo < 1.0 < hi
+    assert flap["divergence_speed"] > flap["flutter_speed"]
+
+
 def test_supervisor_on_open_loop_rejected():
     r = client.post("/api/simulate", json={"cases": [{"controller": "open_loop", "supervisor": "rules"}]})
     assert r.status_code == 422

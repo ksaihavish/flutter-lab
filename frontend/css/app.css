@@ -232,6 +232,13 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
   background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer;
 }
 .ghost-btn:hover { background: var(--surface-2); }
+.ghost-btn:disabled { opacity: 0.6; cursor: progress; }
+.seeds-btn { padding: 8px 14px; font-size: 13px; }
+.table-note { margin-top: 8px; }
+.speed-warning { color: var(--critical); }
+.survival-bar { display: inline-block; width: 80px; height: 8px; border-radius: 4px; background: var(--grid);
+  vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.survival-bar span { display: block; height: 100%; background: var(--ink-2); }
 
 /* ---- cards -------------------------------------------------------------- */
 .card {

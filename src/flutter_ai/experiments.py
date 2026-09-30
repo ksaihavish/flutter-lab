@@ -75,6 +75,45 @@ def run_case(p: WingParams, Uf: float, scenario: Scenario, controller: str, supe
     return simulate(p, make_controller(controller), scenario, Uf, make_supervisor(supervisor), aggressiveness)
 
 
+def _survival_run(args: tuple) -> dict:
+    p, Uf, scenario, controller, supervisor = args
+    m = run_case(p, Uf, scenario, controller, supervisor).metrics
+    return {k: m[k] for k in ("exceeded_limits", "failure_time_s", "rms_h_mm", "cost_J", "saturation_fraction")}
+
+
+def survival_check(p: WingParams, Uf: float, base: Scenario, cases: list[tuple[str, str]], n_seeds: int = 20,
+                   workers: int = 0) -> list[dict]:
+    """
+    One simulation is one realisation of the disturbance: whether a controller survived it says little about whether
+    it is stable at that condition (in turbulence above ~1.1 U_F on uav_flap one seed can survive while half fail;
+    outputs/<preset>/envelope.json). This flies every (controller, supervisor) case over the benchmark's seed draws
+    0..n_seeds-1 of `base` (draw_scenario: seed 0 is `base` itself) and reports survival per case.
+    The LLM supervisor is refused (hundreds of slow calls). workers > 1: a process pool.
+    """
+    if any(sup == "llm" for _, sup in cases):
+        raise ValueError("The multi-seed check does not run the LLM supervisor (too many slow calls).")
+    jobs = [(p, Uf, draw_scenario(base, s), c, sup) for c, sup in cases for s in range(n_seeds)]
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(workers) as ex:
+            runs = list(ex.map(_survival_run, jobs, chunksize=max(1, len(jobs) // (4 * workers))))
+    else:
+        runs = [_survival_run(j) for j in jobs]
+    out = []
+    for i, (c, sup) in enumerate(cases):
+        ms = runs[i * n_seeds:(i + 1) * n_seeds]
+        ok = [m for m in ms if not m["exceeded_limits"]]
+        fails = [m["failure_time_s"] for m in ms if m["exceeded_limits"]]
+        out.append({"controller": c, "supervisor": sup, "n_seeds": n_seeds, "survived": len(ok),
+                    "failure_time_s_median": float(np.median(fails)) if fails else None,
+                    "rms_h_mm_median": float(np.median([m["rms_h_mm"] for m in ok])) if ok else None,
+                    "cost_J_median": float(np.median([m["cost_J"] for m in ok if m["cost_J"] is not None]))
+                    if any(m["cost_J"] is not None for m in ok) else None,
+                    "survived_per_seed": [not m["exceeded_limits"] for m in ms]})
+    return out
+
+
 def tradeoff_sweep(p: WingParams, Uf: float, scenario: Scenario, controller: str,
                    levels=np.linspace(0.0, 1.0, 11)) -> list[dict]:
     """Effort-vs-response curve for fixed aggressiveness (the frontier a supervisor must beat)."""

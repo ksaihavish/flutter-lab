@@ -6,6 +6,7 @@ Command-line interface.
     python -m flutter_ai evaluate  [--preset uav_flap]      benchmark -> outputs/<preset>/results.json + figures
     python -m flutter_ai tune      [--preset uav_flap]      tune LQR/LQG design knobs -> models/classical_tuning_*.json
     python -m flutter_ai robustness [--preset uav_flap]     model error, sensor noise, rate limit -> robustness.json
+    python -m flutter_ai envelope [--preset uav_flap]       survival vs airspeed (real vs unlimited servo) -> envelope.json
     python -m flutter_ai ablations [--preset uav_flap]      ablation study (train variants with train --variant)
     python -m flutter_ai llm-benchmark [--preset uav_flap]  LLM supervisor experiments (slow) -> llm_benchmark.json
     python -m flutter_ai ft-benchmark [--preset uav_flap]   fault-tolerant supervision study -> ft_benchmark.json
@@ -105,6 +106,13 @@ def _robustness(args) -> None:
     from .robustness import robustness_study
 
     robustness_study(get_preset(args.preset), n_draws=args.draws)
+
+
+def _envelope(args) -> None:
+    from .envelope import envelope_study
+    from .params import get_preset
+
+    envelope_study(get_preset(args.preset), seeds=args.seeds, workers=args.workers)
 
 
 def _ablations(args) -> None:
@@ -242,6 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     add("tune", _tune, "tune the classical baselines' design knobs for the real actuator")
     sp = add("robustness", _robustness, "robustness study: model error, sensor noise, actuator rate limit")
     sp.add_argument("--draws", type=int, default=20)
+    sp = add("envelope", _envelope, "survival vs airspeed per controller, with and without the servo's slew limit")
+    sp.add_argument("--seeds", type=int, default=20)
+    sp.add_argument("--workers", type=int, default=0, help="parallel processes (default: half the CPU cores, max 4)")
     sp = add("ablations", _ablations, "ablation study of the neural policy and the supervisor")
     sp.add_argument("--seeds", type=int, default=20)
     sp = add("llm-benchmark", _llm_benchmark, "LLM supervisor experiments (slow; uses FLUTTER_AI_LLM_BACKEND)")

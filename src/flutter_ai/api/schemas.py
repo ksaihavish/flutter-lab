@@ -62,6 +62,16 @@ class SimulateIn(BaseModel):
     max_points: int = Field(1500, ge=100, le=20000)
 
 
+class SurvivalIn(BaseModel):
+    """The same flight over n_seeds disturbance realisations (experiments.survival_check); no LLM supervisor."""
+
+    preset: str = "uav_flap"
+    overrides: ParamOverrides | None = None
+    scenario: ScenarioIn = ScenarioIn()
+    cases: list[CaseIn] = Field(min_length=1, max_length=6)
+    n_seeds: int = Field(20, ge=2, le=40)
+
+
 class FlutterIn(BaseModel):
     preset: str = "uav_flap"
     overrides: ParamOverrides | None = None

@@ -63,7 +63,9 @@ def scenarios_for(preset: str) -> dict[str, dict]:
         sc = spec["scenario"]
         scaled = replace(sc, h0=sc.h0 * s, alpha0_deg=sc.alpha0_deg * s,
                          gust=replace(sc.gust, amplitude=sc.gust.amplitude * s))
-        out[name] = {"description": spec["description"] + f" (Disturbances scaled x{s} for this rig.)",
+        kind = "RMS" if sc.gust.kind == "turbulence" else "peak"
+        out[name] = {"description": spec["description"] + f" (Disturbances scaled x{s} for this rig: "
+                     f"{scaled.gust.amplitude:.3g} m/s {kind} here.)",
                      "scenario": scaled}
     return out
 

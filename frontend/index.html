@@ -61,7 +61,7 @@
           <input type="range" id="speed" min="0.5" max="1.5" step="0.01" value="1.1">
         </label>
         <div class="field-row">
-          <label class="field"><span>Initial plunge (mm)</span><input type="number" id="h0" value="10" step="1" min="-100" max="100"></label>
+          <label class="field"><span>Initial plunge (mm)</span><input type="number" id="h0" value="10" step="any" min="-100" max="100"></label>
           <label class="field"><span>Initial pitch (°)</span><input type="number" id="a0" value="2" step="0.5" min="-20" max="20"></label>
         </div>
         <div class="field-row">
@@ -85,7 +85,7 @@
         </label>
         <label class="field">
           <span>Intensity <output id="out-gust"></output></span>
-          <input type="range" id="gust-amp" min="0" max="8" step="0.1" value="1.5">
+          <input type="range" id="gust-amp" min="0" max="8" step="0.005" value="1.5">
         </label>
         <div class="field-row">
           <label class="field"><span>Start (s)</span><input type="number" id="gust-start" value="3" step="0.5" min="0"></label>
@@ -104,6 +104,9 @@
       </section>
 
       <button class="primary-btn" id="run-btn" type="button">Run simulation</button>
+      <button class="ghost-btn seeds-btn" id="seeds-btn" type="button">Check over 20 seeds</button>
+      <p class="hint">One run is one draw of the turbulence or gust. The check flies the same settings 20 times with
+        new draws (seed 0 is the run shown), which is what tells a stable controller from a lucky one.</p>
     </aside>
 
     <main class="content">
@@ -144,6 +147,14 @@
           <button class="ghost-btn" id="download-btn" type="button">Download CSV</button>
         </div>
         <div class="table-wrap"><table class="metrics" id="metrics-table"></table></div>
+        <p class="hint table-note">Status is for this one draw of the disturbance. Use “Check over 20 seeds” before
+          concluding that a controller is (or is not) stable at this airspeed.</p>
+      </section>
+
+      <section class="card" id="survival-card" aria-labelledby="survival-title" hidden>
+        <div class="card-head"><h2 id="survival-title">Survival over 20 seeds</h2></div>
+        <p class="hint" id="survival-note"></p>
+        <div class="table-wrap"><table class="metrics" id="survival-table"></table></div>
       </section>
 
       <div class="legend" id="legend" aria-label="Legend"></div>

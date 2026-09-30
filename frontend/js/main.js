@@ -108,7 +108,7 @@ function renderCaseOptions() {
     const label = el("label", `case-option${disabled ? " disabled" : ""}`);
     const box = document.createElement("input");
     box.type = "checkbox"; box.checked = c.on; box.disabled = disabled;
-    box.addEventListener("change", () => { c.on = box.checked; updateLLMHint(); });
+    box.addEventListener("change", () => { c.on = box.checked; updateLLMHint(); updateOutputs(); });
     const key = el("span", "key-line");
     key.style.background = `var(${c.color})`;
     label.append(box, key, document.createTextNode(c.label));
@@ -149,7 +149,7 @@ function applyScenario(name) {
   $("speed").value = s.velocity_ratio;
   $("duration").value = s.duration;
   $("delay").value = s.input_delay_steps;
-  $("h0").value = Math.round(s.h0 * 1000);
+  $("h0").value = +(s.h0 * 1000).toFixed(3);  // exact benchmark value (scaled disturbances are not whole mm)
   $("a0").value = s.alpha0_deg;
   $("gust-kind").value = s.gust.kind;
   $("gust-amp").value = s.gust.amplitude;
@@ -165,8 +165,12 @@ function updateOutputs() {
   const ratio = Number($("speed").value);
   const uf = state.flutter?.flutter_speed;
   $("out-speed").textContent = `${Math.round(ratio * 100)}% of U_F${uf ? ` · ${(ratio * uf).toFixed(1)} m/s` : ""}`;
+  const range = currentPreset()?.neural_training_range;
+  const outside = range && CASES.some((c) => c.on && c.needsNeural) && (ratio < range[0] - 1e-9 || ratio > range[1] + 1e-9);
+  $("out-speed").classList.toggle("speed-warning", Boolean(outside));
+  if (outside) $("out-speed").textContent += ` · outside the neural policy's training range (${range[0]}–${range[1]} U_F)`;
   const kind = $("gust-kind").value;
-  const amp = Number($("gust-amp").value).toFixed(1);
+  const amp = +Number($("gust-amp").value).toFixed(3);
   $("out-gust").textContent = kind === "none" ? "–" : kind === "turbulence" ? `${amp} m/s RMS` : `${amp} m/s peak`;
   drawFlutterChart();
 }
@@ -235,6 +239,7 @@ async function run() {
   const body = requestBody();
   if (!body.cases.length) { showBanner("Select at least one controller."); return; }
   showBanner("");
+  $("survival-card").hidden = true;
   const btn = $("run-btn");
   btn.disabled = true;
   btn.textContent = CASES.some((c) => c.on && c.needsLLM) ? "Running (consulting the LLM)…" : "Running…";
@@ -338,7 +343,7 @@ function renderTable(cases) {
     name.appendChild(wrap);
     const status = el("td"), s = el("span", `status-cell ${m.exceeded_limits ? "status-fail" : "status-ok"}`);
     s.append(svgIcon(m.exceeded_limits ? ICON_WARN : ICON_OK),
-      document.createTextNode(m.exceeded_limits ? `Limit exceeded at ${num(m.failure_time_s, 2)} s` : "Within limits"));
+      document.createTextNode(m.exceeded_limits ? `Limit exceeded at ${num(m.failure_time_s, 2)} s` : "Within limits (this run)"));
     status.appendChild(s);
     tr.append(name, status,
       el("td", "", num(m.peak_h_mm, 1)), el("td", "", num(m.rms_h_mm, 2)), el("td", "", num(m.peak_alpha_deg, 2)),
@@ -422,9 +427,64 @@ function redrawAll() {
   viewport.render(state.simTime, 0);
 }
 
+// ---------------------------------------------------------------- multi-seed check
+async function checkSeeds() {
+  const body = requestBody();
+  body.cases = body.cases.filter((c) => c.supervisor !== "llm");
+  if (!body.cases.length) { showBanner("Select at least one controller (the LLM supervisor is not part of the check)."); return; }
+  body.n_seeds = 20;
+  const btn = $("seeds-btn");
+  btn.disabled = true;
+  btn.textContent = "Checking 20 seeds…";
+  try {
+    const res = await api.survival(body);
+    renderSurvival(res, CASES.some((c) => c.on && c.needsLLM));
+  } catch (err) {
+    showBanner(`Multi-seed check failed: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Check over 20 seeds";
+  }
+}
+
+function renderSurvival(res, skippedLLM) {
+  const t = $("survival-table");
+  t.replaceChildren();
+  const thead = el("thead"), hr = el("tr");
+  for (const h of ["Controller", "Survived", "This run (seed 0)", "Median failure time (s)", "Median RMS plunge of survivors (mm)"])
+    hr.appendChild(el("th", "", h));
+  thead.appendChild(hr);
+  const tbody = el("tbody");
+  for (const r of res.results) {
+    const c = CASES.find((x) => x.controller === r.controller && x.supervisor === r.supervisor);
+    const tr = el("tr"), name = el("td"), wrap = el("span", "case-cell"), key = el("span", "key-line");
+    key.style.background = `var(${c ? c.color : "--ink-2"})`;
+    wrap.append(key, document.createTextNode(c ? c.label : `${r.controller} + ${r.supervisor}`));
+    name.appendChild(wrap);
+    const surv = el("td"), bar = el("span", "survival-bar"), fill = el("span");
+    fill.style.width = `${(100 * r.survived) / r.n_seeds}%`;
+    bar.appendChild(fill);
+    surv.append(bar, document.createTextNode(`${r.survived} / ${r.n_seeds}`));
+    const ok0 = r.survived_per_seed[0];
+    const s0 = el("td"), st = el("span", `status-cell ${ok0 ? "status-ok" : "status-fail"}`);
+    st.append(svgIcon(ok0 ? ICON_OK : ICON_WARN), document.createTextNode(ok0 ? "survived" : "failed"));
+    s0.appendChild(st);
+    tr.append(name, surv, s0, el("td", "", num(r.failure_time_s_median, 2)), el("td", "", num(r.rms_h_mm_median, 2)));
+    tbody.appendChild(tr);
+  }
+  t.append(thead, tbody);
+  const lucky = res.results.filter((r) => r.survived_per_seed[0] && r.survived < r.n_seeds).length;
+  $("survival-note").textContent =
+    `${res.velocity.toFixed(1)} m/s (${((100 * res.velocity) / res.flutter_speed).toFixed(0)} % of U_F), ${res.n_seeds} draws of this disturbance.`
+    + (lucky ? " A controller that survived the run shown but not every draw is not reliably stable here." : "")
+    + (skippedLLM ? " The LLM-supervised case is not included (hundreds of slow calls)." : "");
+  $("survival-card").hidden = false;
+}
+
 // ---------------------------------------------------------------- events
 function bindEvents() {
   $("run-btn").addEventListener("click", run);
+  $("seeds-btn").addEventListener("click", checkSeeds);
   $("play-btn").addEventListener("click", () => setPlaying(!state.playing));
   $("restart-btn").addEventListener("click", () => { state.simTime = 0; setPlaying(true); });
   $("scrub").addEventListener("input", (e) => {
