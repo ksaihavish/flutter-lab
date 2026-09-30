@@ -53,6 +53,14 @@ FIGURES = [  # (preset, file, caption)
      "where supervised runs land relative to the fixed-aggressiveness curves."),
     ("uav_flap", "fig12_fault_tolerance.png", "Fault-tolerant supervision: flights survived and time slowed down, per "
      "fault and supervisor."),
+    ("uav_flap", "fig12_fault_tolerance_physics_test100.png", "Pre-registered test of physics-informed supervision "
+     "(seeds 100-119): rules and LLM with and without the on-board flutter-margin estimate."),
+    ("uav_flap", "fig14_diagnoser.png", "Learned fault diagnoser on held-out evaluation flights: detection of the "
+     "known faults and the unknown-fault score on the two faults it never saw."),
+    ("uav_flap", "fig12_fault_tolerance_guardian_test300.png", "The guardian (learned diagnosis + physics "
+     "admissibility, no language model) against the other supervisors on fresh seeds 300-319."),
+    ("uav_flap", "fig17_review_loop.png", "Post-flight LLM reviewer: each hypothesis (and each forced-wrong control) "
+     "through the verification gate's checks, against the thresholds fixed in advance."),
 ]
 
 
@@ -231,6 +239,72 @@ def _surv(ft: dict, fault: str, sup: str) -> float:
     return float(ft["faults"][fault]["supervisors"][sup]["survival"])
 
 
+def _ft_supervisor_table(ft: dict) -> list[str]:
+    """Survival per fault and supervisor, pooled summary and paired tests of one ft-benchmark result file."""
+    faults = list(ft["faults"])
+    sups = list(ft["faults"][faults[0]]["supervisors"])
+    out = [f"\nSupervisors ({len(ft['metadata']['seeds'])} seeds per fault, seeds {ft['metadata']['seeds'][0]}-"
+           f"{ft['metadata']['seeds'][-1]}; survival · mean time slowed down over the surviving flights · final mode = "
+           "oracle's):\n",
+           "| Fault | " + " | ".join(sups) + " |", "|---" * (len(sups) + 1) + "|"]
+    for f in faults:
+        d = ft["faults"][f]["supervisors"]
+        out.append(f"| {f} | " + " | ".join(
+            f"{d[s]['survival']:.0%} · {_sec(d[s]['slowed_s_mean'])}"
+            + (f" · {d[s]['oracle_agreement']:.0%}" if d[s].get("oracle_agreement") is not None else "")
+            for s in sups) + " |")
+    out.append("")
+    pooled = ft["pooled_faulty"]
+    held = [f for f in faults if ft["faults"][f]["held_out"]]
+    for s in sups:
+        surv_h = float(np.mean([ft["faults"][f]["supervisors"][s]["survival"] for f in held])) if held else float("nan")
+        fa = ft["faults"]["none"]["supervisors"][s]["slowed_s_mean"]
+        out.append(f"- **{s}**: {100 * pooled['supervisors'][s]['survival']:.0f} % of faulty flights survived "
+                   f"({100 * surv_h:.0f} % on held-out faults); {_sec(fa)} slowed down on average without a fault.")
+    for label, st in pooled["paired"].items():
+        out.append(f"- {label}: survived only with the first {st['survived_only_candidate']}, only with the second "
+                   f"{st['survived_only_reference']} (exact McNemar {_p(st['mcnemar_p'])})"
+                   + (f"; time slowed {st['slowed_s_mean_diff']:+.1f} s over the {st['n_both_survived']} flights both "
+                      f"survived (Wilcoxon {_p(st['wilcoxon_p_slowed'])})." if st.get("n_both_survived") else "."))
+    if ft.get("llm_latency_s"):
+        lat = ft["llm_latency_s"]
+        out.append(f"- LLM latency: median {lat['median']:.1f} s, 95th percentile {lat['p95']:.1f} s over {lat['n']} "
+                   "decisions" + (f" (applied as a fixed {ft['metadata']['llm_latency_fixed_s']:.2f} s in simulation "
+                                  "time)" if ft["metadata"].get("llm_latency_fixed_s") else "") + ".")
+    out.append("")
+    return out
+
+
+def _pair_sentence(ft: dict, a: str, b: str) -> str | None:
+    """'a X % vs b Y % of faulty flights survived (...)' from the pooled paired test, or None if not in the file."""
+    st = ft["pooled_faulty"]["paired"].get(f"{a} vs {b}")
+    if st is None:
+        return None
+    sa, sb = (ft["pooled_faulty"]["supervisors"][s]["survival"] for s in (a, b))
+    sig = "significant" if st["mcnemar_p"] < 0.05 else "not significant"
+    return (f"{a} {100 * sa:.0f} % vs {b} {100 * sb:.0f} % of faulty flights survived ({sig}: survived only with "
+            f"{a} {st['survived_only_candidate']}, only with {b} {st['survived_only_reference']}, exact McNemar "
+            f"{_p(st['mcnemar_p'])})")
+
+
+def _acted(ft: dict) -> str:
+    """Per supervisor, faulty flights with a mode change decided after the fault began (first_response set)."""
+    out = []
+    for s in ft["faults"]["none"]["per_seed"]:
+        if s == "oracle":
+            continue
+        runs = [r for f, v in ft["faults"].items() if f != "none" for r in v["per_seed"][s]]
+        out.append(f"{s} {sum(r['first_response'] is not None for r in runs)} of {len(runs)}")
+    return ", ".join(out)
+
+
+def _changed_faults(ft: dict, a: str, b: str) -> str:
+    """Per fault, where supervisor a's survival differs from b's: 'fault a % vs b %'."""
+    diff = [(f, _surv(ft, f, a), _surv(ft, f, b)) for f in ft["faults"] if f != "none"
+            and _surv(ft, f, a) != _surv(ft, f, b)]
+    return "; ".join(f"{f} {100 * x:.0f} % vs {100 * y:.0f} %" for f, x, y in diff) or "no fault"
+
+
 def _ft_discussion(ft: dict | None) -> list[str]:
     """Data-driven discussion bullets for the fault-tolerant study (the owner refines the wording)."""
     if not ft:
@@ -280,7 +354,82 @@ def _ft_discussion(ft: dict | None) -> list[str]:
     return out
 
 
-def _conclusion(r: dict | None, llm: dict | None, ft: dict | None, stab: dict | None) -> str:
+def _verdict(ft: dict, a: str, b: str) -> str:
+    """'helped' / 'hurt' / 'did not measurably change' from the pooled paired test of a against b."""
+    st = ft["pooled_faulty"]["paired"][f"{a} vs {b}"]
+    sa, sb = (ft["pooled_faulty"]["supervisors"][s]["survival"] for s in (a, b))
+    if st["mcnemar_p"] >= 0.05:
+        return "did not measurably change"
+    return "helped" if sa > sb else "hurt"
+
+
+def _later_discussion(phys: dict | None, guard: dict | None) -> list[str]:
+    """Discussion bullets for Sections 7.6-7.7, computed from the result files."""
+    out = []
+    if phys:
+        pool = phys["pooled_faulty"]["supervisors"]
+        v = _verdict(phys, "llm+physics", "llm")
+        dmg = phys["faults"].get("stiffness_loss", {}).get("per_seed", {})
+        first = {}
+        for s in ("llm", "llm+physics", "rules+physics"):
+            c: dict[str, int] = {}
+            for r in dmg.get(s, []):
+                k = r["first_response"] or "no change"
+                c[k] = c.get(k, 0) + 1
+            first[s] = ", ".join(f"{k} {n}" for k, n in sorted(c.items(), key=lambda x: -x[1]))
+        out.append(f"- **Is information the LLM's bottleneck?** The same physics estimate {_verdict(phys, 'rules+physics', 'rules')} "
+                   f"the rules and {v} the LLM ({100 * pool['llm+physics']['survival']:.0f} % vs "
+                   f"{100 * pool['llm']['survival']:.0f} %). After structural damage the first responses were: llm "
+                   f"({first['llm']}); llm+physics ({first['llm+physics']}); rules+physics ({first['rules+physics']}). "
+                   "The model used the estimate as a reason to slow down one step rather than as the per-mode prediction "
+                   "it is, which is the trap described above.")
+    if guard:
+        pool = guard["pooled_faulty"]["supervisors"]
+        rx = ", ".join(f"{s} {_sec(pool[s]['reaction_s_median'])}" for s in pool if s not in ("oracle", "none"))
+        out.append(f"- **What made the guardian work.** It decides every 0.25 s from a diagnosis that names the fault, and "
+                   "maps a named fault to a response verified in advance; the physics vetoes modes and adds alarms of its "
+                   "own (lost control authority, current mode predicted unstable). Median reaction "
+                   f"after fault onset (s): {rx}. Its misses are faults whose on-board signature appears late (a slow servo "
+                   "is invisible until the flap is asked to move fast) and physics estimates that read a damaged wing as "
+                   "softer than it is.")
+    return out
+
+
+def _later_findings(phys: dict | None, guard: dict | None, expl: dict | None, rev: dict | None = None) -> list[str]:
+    """Headline sentences of Sections 7.6-7.8 for the abstract and the conclusion (computed, never typed)."""
+    out = []
+    if phys:
+        pool = phys["pooled_faulty"]["supervisors"]
+        out.append(f"In a pre-registered test on fresh seeds, an on-board flutter-margin estimate "
+                   f"{_verdict(phys, 'rules+physics', 'rules')} the rules ({100 * pool['rules+physics']['survival']:.0f} % "
+                   f"vs {100 * pool['rules']['survival']:.0f} % of faulty flights survived) and "
+                   f"{_verdict(phys, 'llm+physics', 'llm')} the LLM ({100 * pool['llm+physics']['survival']:.0f} % vs "
+                   f"{100 * pool['llm']['survival']:.0f} %).")
+    if guard:
+        pool = guard["pooled_faulty"]["supervisors"]
+        st = guard["pooled_faulty"]["paired"]["guardian vs rules"]
+        out.append(f"A supervisor built from fast models instead (a learned fault diagnoser and the physics estimate "
+                   f"extended with control authority, no language model) survived "
+                   f"{100 * pool['guardian']['survival']:.0f} % of faulty flights on fresh seeds, against "
+                   f"{100 * pool['rules']['survival']:.0f} % for the rules (exact McNemar {_p(st['mcnemar_p'])}) and "
+                   f"{100 * pool['oracle']['survival']:.0f} % for the oracle.")
+    if expl and expl["summary"]["faithfulness_rate"] is not None:
+        s_ = expl["summary"]
+        out.append(f"Off the control path, the same language model's explanations of these decisions passed a "
+                   f"faithfulness check in {100 * s_['faithfulness_rate']:.0f} % of its valid answers.")
+    if rev:
+        s_ = rev["summary"]
+        acc = sum(c["accepted"] for c in s_["gate"])
+        right_acc = sum(c["accepted"] and c["right_kind"] for c in s_["gate"])
+        out.append(f"As a post-flight reviewer it named the true fault in {s_['right_kind']} of {s_['valid_hypotheses']} "
+                   f"valid hypotheses, and a verification gate accepted {acc} of {len(s_['gate'])} retrained diagnosers"
+                   + (f" ({right_acc} with the right fault)" if acc else "") + ", so no unverified change reached the "
+                   "fast models.")
+    return out
+
+
+def _conclusion(r: dict | None, llm: dict | None, ft: dict | None, stab: dict | None,
+                later: list[str] | None = None) -> str:
     parts = []
     if r:
         wl, nl = _neural_vs(r, "lqr")
@@ -307,6 +456,7 @@ def _conclusion(r: dict | None, llm: dict | None, ft: dict | None, stab: dict | 
                      "destabilise the nominal closed loop in the small-signal sense (faults, actuator limits and airspeed "
                      "transitions are outside this guarantee); its value depends on the diagnostics it is given and on "
                      "the time scale of the decision.")
+    parts.extend(later or [])
     parts.append("*[Owner: add one closing sentence on what this means for practice and the next step.]*")
     return " ".join(parts)
 
@@ -321,6 +471,10 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
     llm = _load(OUTPUTS_DIR / "uav_flap" / "llm_benchmark.json")
     ft = _load(OUTPUTS_DIR / "uav_flap" / "ft_benchmark.json")
     stab = _load(OUTPUTS_DIR / "uav_flap" / "ft_stability.json")
+    phys = _load(OUTPUTS_DIR / "uav_flap" / "ft_benchmark_physics_test100.json")
+    guard = _load(OUTPUTS_DIR / "uav_flap" / "ft_benchmark_guardian_test300.json")
+    expl = _load(OUTPUTS_DIR / "uav_flap" / "explainer_eval.json")
+    rev = _load(OUTPUTS_DIR / "uav_flap" / "review_loop.json")
     bact = _load(OUTPUTS_DIR / "validation" / "bact.json")
     cite = Refs(_bib(RESEARCH / "references.bib"))
     p = PRESETS["uav_flap"]
@@ -367,6 +521,9 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
         abstract += (f" Switching between the inner-loop controllers is provably stable (small-signal, nominal wing) "
                      f"when switches are at least {stab['max_dwell_s']:.1f} s apart on average, a condition the "
                      "architecture enforces.")
+    later = _later_findings(phys, guard, expl, rev)
+    if later:
+        abstract += " " + " ".join(later)
     w(abstract + "\n")
 
     # ------------------------------------------------------------ introduction
@@ -417,7 +574,7 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
       "layer.\n")
     w(f"*Switching stability.* Switching among stable linear systems is stable if switches are slow on average "
       f"{cite('hespanha1999')} (stated in continuous time; Section 5 gives the discrete-time counterpart we use); "
-      "LQG designs have no guaranteed robustness margins {cite('doyle1978')}, which our "
+      f"LQG designs have no guaranteed robustness margins {cite('doyle1978')}, which our "
       "robustness results illustrate.\n")
 
     # ------------------------------------------------------------ model
@@ -509,8 +666,11 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
           f"confidence intervals on the paired differences. Disturbance sizes for uav_flap are those a {rate:.0f} °/s "
           f"servo can handle (turbulence {sc['turbulence_patch']['scenario']['gust']['amplitude']:.2f} m/s RMS).\n")
     w("Further studies: robustness (designs for the nominal wing flying perturbed wings, sensor noise, slower "
-      "actuators), ablations of the neural policy, an LLM supervising effort modes, and the fault-tolerant study "
-      "(Section 7.5).\n")
+      "actuators), ablations of the neural policy, an LLM supervising effort modes, the fault-tolerant study "
+      "(Section 7.5), a pre-registered test of physics-informed supervision (7.6), a supervisor built from fast "
+      "learned and physics models (7.7), and the LLM in roles off the control path (7.8). Fault-tolerant studies use "
+      "disjoint seed sets: 0-19 (7.5), 100-119 (7.6), 300-319 (7.7); every design choice was made on seeds from 1000 "
+      "up.\n")
 
     # ------------------------------------------------------------ results
     w("## 7. Results\n")
@@ -604,36 +764,124 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
             d = ft["faults"][f]
             om = max(set(d["oracle_modes"]), key=d["oracle_modes"].count)
             w(f"| {f} | " + " | ".join(f"{d['fixed_modes'][m]['survival']:.0%}" for m in modes) + f" | {om} |")
-        sups = list(ft["faults"][faults[0]]["supervisors"])
-        w(f"\nSupervisors ({len(ft['metadata']['seeds'])} seeds per fault; survival · mean time slowed down over the "
-          "surviving flights · final mode = oracle's):\n")
-        w("| Fault | " + " | ".join(sups) + " |")
-        w("|---" * (len(sups) + 1) + "|")
-        for f in faults:
-            d = ft["faults"][f]["supervisors"]
-            w(f"| {f} | " + " | ".join(
-                f"{d[s]['survival']:.0%} · {_sec(d[s]['slowed_s_mean'])}"
-                + (f" · {d[s]['oracle_agreement']:.0%}" if d[s].get("oracle_agreement") is not None else "")
-                for s in sups) + " |")
-        w("")
-        pooled = ft["pooled_faulty"]
-        held = [f for f in faults if ft["faults"][f]["held_out"]]
-        for s in sups:
-            surv_h = float(np.mean([ft["faults"][f]["supervisors"][s]["survival"] for f in held])) if held else float("nan")
-            fa = ft["faults"]["none"]["supervisors"][s]["slowed_s_mean"]
-            w(f"- **{s}**: {100 * pooled['supervisors'][s]['survival']:.0f} % of faulty flights survived "
-              f"({100 * surv_h:.0f} % on held-out faults); {_sec(fa)} slowed down on average without a fault.")
-        for label, st in pooled["paired"].items():
-            w(f"- {label}: survived only with the first {st['survived_only_candidate']}, only with the second "
-              f"{st['survived_only_reference']} (exact McNemar {_p(st['mcnemar_p'])})"
-              + (f"; time slowed {st['slowed_s_mean_diff']:+.1f} s over the {st['n_both_survived']} flights both "
-                 f"survived (Wilcoxon {_p(st['wilcoxon_p_slowed'])})." if st.get("n_both_survived") else "."))
-        if ft.get("llm_latency_s"):
-            lat = ft["llm_latency_s"]
-            w(f"- LLM latency: median {lat['median']:.1f} s, 95th percentile {lat['p95']:.1f} s over {lat['n']} decisions.")
-        w("")
+        L.extend(_ft_supervisor_table(ft))
     else:
         w("*Running (`python -m flutter_ai ft-benchmark`); this section fills in automatically.*\n")
+
+    w("### 7.6 Physics-informed supervision (pre-registered test)\n")
+    w("The supervisors above see symptoms. Here the report also carries an on-board flutter-margin estimate: every "
+      "second a grey-box fit of the last 4 s of flight identifies the wing's pitch stiffness and flap effectiveness "
+      "(relative to the same fit at take-off, which absorbs the bias of the unmeasured turbulence) and predicts the "
+      "identified wing's flutter speed and whether each mode's controller keeps it stable. In rules + physics the "
+      "symptom rules decide whether to act and the estimate decides which modes are safe: a mode predicted unstable on "
+      "the identified wing is never chosen, and if the current mode is predicted unstable the least disruptive "
+      "predicted-stable mode is taken (hold speed first, then the smallest slow-down). The LLM receives the same "
+      "estimate as a PHYSICS ESTIMATE block (llm + physics). The "
+      "estimator was developed on seeds from 1000 up; the comparison, its supervisors and its seeds were fixed before "
+      "the run, and the seeds had not been used before.\n")
+    if phys:
+        lat = phys["metadata"].get("llm_latency_fixed_s")
+        w(f"Seeds {phys['metadata']['seeds'][0]}-{phys['metadata']['seeds'][-1]}"
+          + (f"; the LLM's answers take effect after a fixed {lat:.2f} s of simulation time (the median latency "
+             "measured in Section 7.5), so the outcome does not depend on the load of the machine" if lat else "")
+          + (f"; run one fault per process ({len(phys['metadata']['pieces'])} pieces, merged with the benchmark's own "
+             "statistics)" if phys["metadata"].get("pieces") else "") + ".")
+        L.extend(_ft_supervisor_table(phys))
+        w(f"- **How often each supervisor acted** (faulty flights with a mode change decided after onset): "
+          f"{_acted(phys)}.")
+        for a, b in (("rules+physics", "rules"), ("llm+physics", "llm"), ("llm+physics", "rules+physics"),
+                     ("llm", "rules")):
+            s_ = _pair_sentence(phys, a, b)
+            if s_:
+                w(f"- **{a} vs {b}:** {s_}. Per fault where they differ: {_changed_faults(phys, a, b)}.")
+        w("")
+    else:
+        w("*Not run yet (seeds 100-119, supervisors none, rules, rules+physics, llm, llm+physics).*\n")
+
+    w("### 7.7 A fast guardian: learned diagnosis with physics admissibility\n")
+    w("In Section 7.5 the LLM answered in seconds and rarely changed mode. The guardian asks whether fast models can "
+      "make that decision instead; it keeps the same mode menu, dwell time and fallback. Every 0.25 s it reads (a) "
+      "a learned fault diagnoser (a small encoder over physics features of the last 2.5 s with a multi-label head for "
+      "the four known faults and a reconstruction-error score for unknown faults, trained on simulated flights that "
+      "never contain the two held-out faults), (b) the flutter-margin estimate extended with "
+      "control authority (predicted flap command and rate against the actuator limits), turbulence, sensor-noise and "
+      "loop-delay estimates and worst-case margins over the identification's confidence region, and (c) the symptom "
+      "rules as a fallback. A confirmed known fault receives its pre-verified response, an unknown fault the most "
+      "conservative mode; the chosen mode is the first of that response's preferences the physics admits (never one "
+      "predicted unstable or saturating where the identified wing needs control); structural evidence holds speed unless "
+      "the physics predicts the current mode unstable; it never de-escalates on its own. It uses no language model. "
+      "Its thresholds were set on development seeds (1000-1009), and it was evaluated once on fresh seeds after the "
+      "design was frozen.\n")
+    if guard:
+        L.extend(_ft_supervisor_table(guard))
+        w(f"- **How often each supervisor acted** (faulty flights with a mode change decided after onset; holding "
+          f"speed is the right response to stiffness loss): {_acted(guard)}.")
+        for a, b in (("guardian", "rules"), ("guardian", "rules+physics"), ("guardian", "rules+physics_v2"),
+                     ("guardian", "none")):
+            s_ = _pair_sentence(guard, a, b)
+            if s_:
+                w(f"- **{a} vs {b}:** {s_}. Per fault where they differ: {_changed_faults(guard, a, b)}.")
+        w("")
+    else:
+        w("*Not run yet (`ft-benchmark --first-seed 300 --seeds 20 --tag guardian_test300`).*\n")
+
+    w("### 7.8 The language model off the control path\n")
+    w("If the LLM should not choose modes, it may still help where time is not critical. Both roles below use the "
+      "same safety wrapper (schema-constrained JSON re-checked in Python, a call budget, a timeout) and neither can "
+      "change a decision.\n")
+    if expl:
+        s_ = expl["summary"]
+        reasons = ", ".join(f"{k} {v}" for k, v in sorted(s_["rejection_reasons"].items(), key=lambda x: -x[1]))
+        w(f"**Explainer.** After a decision, {expl['metadata']['model']} reads the report (with the diagnosis and "
+          "physics blocks) and the decision taken, and writes one or two sentences for the operator plus the fault and "
+          "mode it refers to. An answer is shown only if it is faithful: its mode is the decision taken, its fault is "
+          "the diagnosis's top flagged class (or unknown / none), its length is 20-400 characters, and it names no fault "
+          "the diagnosis does not flag; otherwise a deterministic template is shown. The check covers these fields and "
+          f"literal fault names, not every claim of the free text. Over {s_['reports']} reports from "
+          f"{len(expl['metadata']['flights'])} development flights: {s_['llm_answers_valid']} valid answers, "
+          f"{s_['faithful']} faithful"
+          + (f" ({100 * s_['faithfulness_rate']:.0f} % of valid answers)" if s_["faithfulness_rate"] is not None else "")
+          + f", {s_['llm_call_failures']} failed calls; the template was shown for {100 * s_['fallback_rate']:.0f} % "
+          f"of reports; latency median {s_['latency_s']['median']:.1f} s"
+          + (f". Rejection reasons: {reasons}." if reasons else ".") + "\n")
+    else:
+        w("*Explainer: not run yet (`python -m flutter_ai explainer-eval`).*\n")
+    if rev:
+        s_ = rev["summary"]
+        g_ = rev["metadata"]["gate"]
+        w(f"**Post-flight reviewer with a verification gate.** After a development flight in which the diagnoser "
+          "raised a confirmed unknown-fault alarm, the LLM reads a compact log and proposes a fault from the catalogue "
+          "with bounded severity and growth ranges. Flights are simulated for the hypothesis, a candidate diagnoser is "
+          "trained with it as an extra class, and the candidate is accepted only if (1) no existing class loses more "
+          f"than {g_['f1_tolerance']} window F1 on the original evaluation split and the healthy-flight alarm rate rises "
+          f"by at most {g_['false_alarm_tolerance']}, and (2) on the anomalous flights the hypothesised class is "
+          f"confirmed in at least {100 * g_['explain_class_min']:.0f} % of the windows after the first unknown alarm "
+          f"and the unknown alarm in at most {100 * g_['explain_unknown_max']:.0f} %. Thresholds were fixed before any "
+          "candidate was scored; hypotheses forced to be wrong serve as controls. "
+          f"{s_['reviews']} reviews, {s_['valid_hypotheses']} valid hypotheses, {s_['right_kind']} naming the true "
+          f"fault; latency median {s_['latency_s_median']:.1f} s.\n")
+        w("| Hypothesis from | Anomaly (truth) | Hypothesis | Right fault | Gate |")
+        w("|---|---|---|---|---|")
+        for c in s_["gate"]:
+            w(f"| {c['source']} | {c['anomaly']} | {c['hypothesis']} | {'yes' if c['right_kind'] else 'no'} | "
+              f"{'accepted' if c['accepted'] else 'rejected'} |")
+        for c in rev["candidates"]:
+            if c.get("fresh"):
+                fr = c["fresh"]
+                cd, ua = fr["candidate"]["class_detected"], fr["v1"]["unknown_alarm"]
+                w(f"- Accepted candidate {c['index']} ({c['hypothesis']['kind']} for {c['anomaly_kind']}), on "
+                  f"{fr['candidate']['flights']} fresh {c['anomaly_kind']} flights: the new class confirmed in "
+                  + (f"{100 * cd:.0f} %" if cd is not None else "–") + " of them; the original diagnoser's unknown "
+                  "alarm in " + (f"{100 * ua:.0f} %" if ua is not None else "–") + ".")
+        n_h = rev["v1_regression"]["healthy_flights"]
+        w(f"\nThe false-alarm check counts healthy flights with any alarm on {n_h} flights (the original diagnoser: "
+          f"{round(rev['v1_regression']['healthy_any_alarm_rate'] * n_h)}), so its tolerance of "
+          f"{g_['false_alarm_tolerance']} allows at most {math.floor(g_['false_alarm_tolerance'] * n_h + 1e-9)} additional "
+          "flight: at this sample size the gate is conservative. The gate checks consistency in the diagnoser's feature "
+          "space, not physical truth: a wrong hypothesis whose flights look like the anomaly can pass, which is why the "
+          "controls and the right-fault column are reported.\n")
+    else:
+        w("*Post-flight reviewer: not run yet (`python -m flutter_ai review-loop`).*\n")
 
     # ------------------------------------------------------------ discussion etc.
     w("## 8. Discussion\n")
@@ -646,7 +894,7 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
       "within tenths of a second; an effort knob that barely moves the trade-off gives it nothing to choose. The "
       "same model is only useful for slow, persistent changes such as faults, and only through modes that were "
       "verified in advance.")
-    for line in _ft_discussion(ft):
+    for line in _ft_discussion(ft) + _later_discussion(phys, guard):
         w(line)
     w("- **Safety by construction.** The bounded mode set, schema-constrained answers, rule fallback, one question "
       "at a time and the dwell-time bound make the LLM's worst case analysable, independent of its reasoning.\n")
@@ -659,9 +907,12 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
     w("- One local model size (8B, quantised) on one laptop GPU; the cloud backend was not run. The oracle is an "
       "upper bound defined by hindsight and a preference for the least disruptive surviving mode.")
     w("- The stability guarantee is small-signal, for the nominal wing and switching at a fixed airspeed; faults and "
-      "airspeed changes are outside it.\n")
+      "airspeed changes are outside it.")
+    w("- The guardian's thresholds, fault responses and diagnoser were designed with the same simulator, fault "
+      "catalogue and fault sizes it was tested on (on disjoint seeds); its transfer to other fault sizes, fault types "
+      "or a real wing is untested. The LLM studies off the control path used development flights only.\n")
     w("## 10. Conclusion\n")
-    w(_conclusion(res.get("uav_flap"), llm, ft, stab) + "\n")
+    w(_conclusion(res.get("uav_flap"), llm, ft, stab, later) + "\n")
 
     # ------------------------------------------------------------ reproducibility, figures, references
     w("## Reproducibility\n")

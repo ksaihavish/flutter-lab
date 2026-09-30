@@ -100,7 +100,8 @@ measurements; the next iteration should be judged on fresh seeds.
 2. **Report integration:** add the margin block to the supervisor report; compare, on **fresh test seeds**
    (e.g. 100-119, untouched so far): rules, rules + margin (a physics rule), LLM, LLM + margin, oracle. v2
    (`rules+physics_v2`, `margin_version=2`) is not part of that pre-registered comparison; if it is to be tested, it
-   needs its own fresh seeds.
+   needs its own fresh seeds. **Done 2026-09-30** (`ft_benchmark_physics_test100.json`; Memory.md §4): the estimate
+   helped the rules and made the LLM much worse (it slowed into the structural-damage trap, citing the estimate).
 3. **Time-scale map (idea 2):** sweep fault growth time and supervisor latency; where does each supervisor keep up?
 4. Between flights (owner's continual-learning idea): the LLM reviews logs and proposes training scenarios; a
    retrained policy is accepted only if it passes the full benchmark and the stability checks (verification gate).
@@ -146,3 +147,57 @@ thresholds) and `outputs/uav_flap/diagnoser_eval.json` (evaluation); figure `out
 - **Next:** a supervisor that acts on the diagnosis (known fault -> the pre-verified response, unknown -> the most
   conservative mode) compared on fresh test seeds with rules and the LLM; more `safe`-mode and slow-servo training
   data; an LLM that only explains the diagnosis block.
+
+## Guardian supervisor (built 2026-09-30; `GuardianSupervisor`, `ft-benchmark --supervisors guardian`)
+
+The decision layer that combines the pieces. Every tick (0.25 s) it reads (a) the learned diagnosis
+(`diagnose_every_s=0.5`), (b) the physics estimate v2 (`margin_every_s=1.0`, `margin_version=2`) through a pluggable
+`physics_verdict` (works with v1, v2 or no estimate), and (c) the symptom rules as the fallback:
+
+- a confirmed known fault gets its pre-verified response (`FAULT_RESPONSE`, from the benchmark's fixed-mode table:
+  servo, noise, turbulence -> the least disruptive slow-down; structural damage -> hold speed); a confirmed unknown
+  fault -> the most conservative mode; the symptom rules' proposals and the physics alarms (identified flap
+  effectiveness < 0.70: authority lost; current mode predicted unstable) add evidence; the strongest response wins;
+- the chosen mode is the first one of that response's preference list the physics admits (never a mode predicted
+  unstable or saturating where the identified wing needs control; a slow-down whose destination is below the
+  identified wing's flutter speed is admitted); the neural mode is last everywhere (a controller switch locks it in
+  for the 7 s dwell time, and a growing loop delay then saturates it: margin_eval);
+- structural evidence (diagnosis, a pitch-frequency drop of more than 20 %, or identified pitch stiffness < 0.92)
+  holds the current mode unless the physics predicts it unstable, and waits for an estimate made after the evidence
+  (the time-scale map's trap: acting on the symptom before the estimate had caught up slowed the aircraft into the
+  band where the damaged wing flutters);
+- it never de-escalates on its own.
+
+Thresholds (0.70, 0.92) lie outside the range the estimator produced on development flights without that damage
+(seeds 1000-1004; see the comment in `supervisors.py`). Development
+comparison: `ft-benchmark --first-seed 1000 --seeds 10 --tag guardian_dev1000` (dev seeds; `ft_benchmark_guardian_dev1000.json`).
+Final evaluation, once, after freezing the design: seeds 300-319 (`--tag guardian_test300`). Tests:
+`tests/test_guardian_supervisor.py`. Results and limits: Memory.md §4. **Done 2026-09-30:** design frozen after the
+dev run, final test run once (supervisors none, rules, rules+physics, rules+physics_v2, guardian; no LLM); the guardian
+kept most faulty flights that the rules lost and lost almost none they kept (numbers in the JSON and Memory.md §4).
+Remaining misses: a slow servo recognised too late, and physics v2 reading a damaged wing as too soft.
+
+## LLM roles: explainer and post-flight reviewer with a verification gate (built 2026-09-30)
+
+The owner's architecture: fast models act; a small local LLM explains and thinks about past flights; guard rails make
+sure it cannot break the fast models. Both roles are off the control path and use the supervisor's safety wrapper
+(`supervisor/llm.py` `ask`: schema-constrained JSON, the schema re-checked in Python, a task check, call budget,
+timeout; a failed answer is returned with its reason and never used).
+
+- **Explainer** (`fault_tolerance/explainer.py`, `explainer-eval` -> `explainer_eval.json`): after a decision, the
+  LLM reads the report (with the PHYSICS ESTIMATE and LEARNED DIAGNOSIS blocks) and the decision taken and writes one
+  or two sentences for the operator, plus `fault` and `mode` enum fields. Faithfulness check: `mode` = the decision,
+  `fault` = the diagnosis's top flagged class / "unknown" / "none", 20-400 characters, no fault named that the
+  diagnosis does not flag. Otherwise a deterministic template explanation is shown and the reason recorded. The check
+  covers the fields and literal fault names, not every claim of the free text.
+- **Post-flight reviewer + verification gate** (`fault_tolerance/review.py`, `review-loop` -> `review_loop.json`,
+  fig17, accepted models `models/diagnoser_<preset>_v2_<kind>_<i>.npz`): after a development flight in which v1
+  raised a confirmed unknown-fault alarm, the LLM reads a compact log and proposes a catalogue fault with bounded
+  severity and growth ranges. The gate simulates flights for it, trains a candidate (v1's data + the new flights,
+  the hypothesis as an extra class) and accepts it only if (1) no v1 class loses more than 0.05 window F1 on v1's
+  eval split and the healthy-flight alarm rate rises by at most 0.05, and (2) on the anomalous flights, from v1's first
+  unknown alarm on, the hypothesised class is confirmed in >= 50 % of the windows and the unknown alarm in <= 10 %.
+  Thresholds were fixed in the module before any candidate was scored. Controls: hypotheses forced to be wrong
+  (flap damage -> servo_slew, loop delay -> sensor_noise). Accepted candidates are checked on fresh flights.
+  **Limit:** the gate checks consistency in the diagnoser's feature space, not physical truth; a wrong hypothesis
+  whose flights look like the anomaly can pass (the result file reports whether each accepted hypothesis was right).

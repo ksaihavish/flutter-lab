@@ -20,6 +20,11 @@
 
 ## Writing still to do (after the fault-tolerant results)
 
+- [ ] **Decide the framing and title.** The draft is still titled "On-board language-model supervision ...". The
+      results now say: the LLM loses to simple rules as a decision-maker (twice), giving it physics makes it worse, and a
+      fast learned + physics supervisor (the guardian) comes close to the oracle, while the LLM is useful for explaining
+      decisions. The title, abstract opening and contributions list are prose in `src/flutter_ai/paper.py`.
+
 - [ ] §8 Discussion and §10 Conclusion are generated from the results (data-driven bullets): edit the wording and
       write the closing sentence of §10 (marked *[Owner: ...]*).
 - [ ] Abstract: re-read once §7.5 is filled (it updates automatically).
@@ -35,6 +40,10 @@
 - [x] Fault-tolerant study built; dwell-time stability bound computed and enforced; tests check the analysis
       against the simulator.
 - [x] Fault-tolerant benchmark results (`ft-benchmark`: 7 fault cases × 20 seeds; Memory.md §4).
+- [x] Pre-registered physics-informed test on fresh seeds 100-119 (§7.6 of the draft).
+- [x] Guardian (learned diagnosis + physics, no LLM): designed on seeds 1000-1009, final test once on seeds 300-319
+      (§7.7).
+- [x] LLM off the control path: explainer faithfulness and the post-flight reviewer with a verification gate (§7.8).
 
 ## Nice to have (strengthens the paper, not required)
 

@@ -63,6 +63,11 @@ At most one Claude case is shown at a time.
 | Status critical (limit exceeded, structural limit lines) | `--critical` | `#d03b3b` | `#d03b3b` |
 | Supervisor mode meter (ordinal, efficient → emergency; FT modes nominal → safe) | `--seq-1…4` | `#86b6ef → #0d366b` | `#184f95 → #86b6ef` |
 | On-board flutter-speed estimate (Guardian view only) | `--c-estimate` | `#1baf7a` | `#199e70` |
+| Fault-tolerant supervisors (figures only, `plots.FT_SUP_COLORS`): rules / rules+physics / rules+physics_v2 / llm / llm+physics / guardian / random / none / oracle | – | `#1baf7a` / `#eda100` / `#e34948` / `#e87ba4` / `#4a3aa7` / `#2a78d6` / `#c3c2b7` / `#898781` / `#0b0b0b` | (figures are light only) |
+
+Supervisor bars are drawn in that order (references none and oracle on the right). Validated 2026-09-30 on the
+adjacent pairs of each study's subset: CVD ΔE ≥ 9.1 and normal-vision ΔE ≥ 17.8 for the physics and guardian studies;
+the main study's rules/llm pair is 6.1 (deutan), legal only because a legend and the results tables accompany it.
 
 Status colours are **reserved**: never use them for a data series.
 

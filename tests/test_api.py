@@ -117,3 +117,18 @@ def test_fault_tolerance_discussion_is_computed_from_results():
     assert "loop_delay: LLM 100 %" in text
     assert "did better than hand-written rules" in _conclusion(None, None, ft, None)
     assert _ft_discussion(None)[0].startswith("- **Fault tolerance:** *[results pending")
+
+
+def test_paired_sentences_are_computed_from_results():
+    from flutter_ai.paper import _changed_faults, _pair_sentence
+
+    ft = {"faults": {"none": {"supervisors": {"a": {"survival": 1.0}, "b": {"survival": 1.0}}},
+                     "servo_slew": {"supervisors": {"a": {"survival": 0.5}, "b": {"survival": 0.25}}},
+                     "sensor_noise": {"supervisors": {"a": {"survival": 1.0}, "b": {"survival": 1.0}}}},
+          "pooled_faulty": {"supervisors": {"a": {"survival": 0.75}, "b": {"survival": 0.625}},
+                            "paired": {"a vs b": {"survived_only_candidate": 5, "survived_only_reference": 0,
+                                                  "mcnemar_p": 0.0625}}}}
+    s = _pair_sentence(ft, "a", "b")
+    assert s is not None and s.startswith("a 75 % vs b 62 %") and "not significant" in s and "only with a 5" in s
+    assert _pair_sentence(ft, "b", "a") is None  # only pairs the benchmark computed
+    assert _changed_faults(ft, "a", "b") == "servo_slew 50 % vs 25 %"

@@ -3,7 +3,7 @@
 *The project's running state, so a new chat or AI tool can continue without re-reading the
 whole codebase. **Update this file at the end of every working session.***
 
-Last updated: **2026-09-30** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator); **next = the owner's paper items** (`research/submission-checklist.md`)
+Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator) + physics advisor, pre-registered physics test, Guardian supervisor (final test done), LLM explainer / post-flight reviewer; **experiments finished; next = the owner's paper items** (`research/submission-checklist.md`)
 
 ---
 
@@ -36,8 +36,10 @@ Last updated: **2026-09-30** · Version **0.3.0** · Phase: 4 done (fair baselin
 | Neural policy `uav_section` | ✅ trained 2026-09-28 | Speeds 0.8–1.4 U_F, turbulence ≤ 2 m/s |
 | Rule supervisor | ✅ | Works; **adds no measurable value** (see §4) |
 | Fault-tolerant supervision | ✅ 2026-09-29 | `fault_tolerance/`: faults, diagnostics, bank, rules/random/oracle/LLM, `ft-benchmark`, `ft-stability`. Results in §4 (`outputs/uav_flap/ft_benchmark.json`, fig12) |
-| Physics-informed advisor | 🔄 started 2026-09-29 | `research/physics-advisor-plan.md`: `fault_tolerance/margin.py` (v1 flutter-margin estimator: pitch stiffness + flap effectiveness, flutter speed, per-mode predicted stability; `tests/test_margin.py`). No-latency ablation of the FT benchmark running (`--tag no_latency_2s`). **v2 built 2026-09-30** (authority, turbulence/noise, measured delay, robust margins; `rules+physics_v2`; `margin-eval` on dev seeds → `margin_eval.json`, fig15; `tests/test_margin_v2.py`) |
-| Paper prep | ✅ 2026-09-29 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
+| Physics-informed advisor | ✅ 2026-09-30 | `research/physics-advisor-plan.md`: `fault_tolerance/margin.py` (v1 flutter-margin estimator: pitch stiffness + flap effectiveness, flutter speed, per-mode predicted stability; `tests/test_margin.py`). **v2** (authority, turbulence/noise, measured delay, robust margins; `rules+physics_v2`; `margin-eval` on dev seeds → `margin_eval.json`, fig15; `tests/test_margin_v2.py`). **Pre-registered test done** (seeds 100-119, snapshot 3a9d325; §4) |
+| Guardian supervisor | ✅ 2026-09-30 | `GuardianSupervisor` (learned diagnosis + physics v2 admissibility + symptom-rule fallback, no LLM). Dev `guardian_dev1000`, **final test once on seeds 300-319** (`ft_benchmark_guardian_test300.json`, fig12_..._guardian_test300); §4 |
+| LLM off the control path | ✅ built 2026-09-30 | Explainer (`explainer-eval` → `explainer_eval.json`) and post-flight reviewer + verification gate (`review-loop` → `review_loop.json`, fig17); §4 |
+| Paper prep | ✅ 2026-09-30 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5-§7.8 (FT study, pre-registered physics test, Guardian, LLM explainer/reviewer), the abstract's and conclusion's later sentences, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics; no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
@@ -260,6 +262,140 @@ rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only wi
   better-identified flap factor), a fault-growth-aware choice (avoid controller switches that lock in under a growing
   fault), and a shorter or weighted window to reduce the lag behind ramping faults. Evaluate only on fresh seeds.
 
+### Pre-registered physics test (uav_flap, fresh seeds 100-119)
+
+Supervisors, seeds and the code were fixed before the run (`research/physics-advisor-plan.md` Next 2; snapshot
+3a9d325 in `C:\Users\lio48\dev\flutter-lab-exp`, run one fault per process by `run_pieces.py` after the first attempt
+was killed by a low-memory reaper; pieces merged with the snapshot's `_save`). LLM `llama3.1:8b`, answers applied after a
+fixed latency (the median of the main benchmark), so the result does not depend on machine load. Files:
+`outputs/uav_flap/ft_benchmark_physics_test100.json` (+ the seven `_<fault>` pieces), fig12_fault_tolerance_physics_test100.
+Cells: survival · mean time slowed over surviving flights (s). † held out.
+
+**physics_test100** (generated 2026-09-29T19:31:05+00:00, seeds 100-119, complete True, fixed LLM latency 4.41 s)
+
+| Fault | oracle | none | rules | rules+physics | llm | llm+physics |
+|---|---|---|---|---|---|---|
+| none | 100 % · 0.0 | 100 % · 0.0 | 100 % · 2.6 | 100 % · 2.6 | 100 % · 0.0 | 100 % · 0.0 |
+| servo_slew | 100 % · 21.6 | 0 % · – | 15 % · 20.2 | 15 % · 20.2 | 0 % · – | 0 % · – |
+| stiffness_loss | 100 % · 0.0 | 100 % · 0.0 | 5 % · 25.0 | 70 % · 4.0 | 100 % · 0.0 | 5 % · 2.8 |
+| sensor_noise | 100 % · 21.6 | 5 % · 0.0 | 100 % · 22.5 | 85 % · 22.5 | 50 % · 14.0 | 10 % · 5.7 |
+| turbulence_rise | 100 % · 14.8 | 0 % · – | 85 % · 18.2 | 85 % · 18.2 | 20 % · 8.3 | 0 % · – |
+| loop_delay † | 100 % · 21.6 | 0 % · – | 100 % · 21.9 | 100 % · 21.9 | 0 % · – | 0 % · – |
+| flap_effectiveness † | 100 % · 22.8 | 0 % · – | 20 % · 18.9 | 25 % · 19.2 | 0 % · – | 0 % · – |
+| **all faulty** | **100 %** · 17.1 | **18 %** · 0.0 | **54 %** · 20.9 | **63 %** · 17.7 | **28 %** · 5.1 | **2 %** · 4.7 |
+
+| Pair | Survived only first | Survived only second | McNemar p | Δ slowed, both survived (s) | Wilcoxon p |
+|---|---|---|---|---|---|
+| llm vs rules | 19 | 50 | < 0.001 | -10.0 | < 0.001 |
+| llm vs none | 13 | 0 | < 0.001 | +0.8 | 0.32 |
+| rules vs none | 63 | 19 | < 0.001 | +23.7 | 0.50 |
+| rules+physics vs rules | 14 | 3 | 0.013 | +0.0 | 1.00 |
+| llm+physics vs llm | 1 | 32 | < 0.001 | -6.5 | 1.00 |
+| llm+physics vs rules+physics | 2 | 75 | < 0.001 | -13.7 | 1.00 |
+
+LLM answers: 1046, measured latency median 3.6 s, p95 4.9 s; fallbacks: 0.
+
+**What it says**
+- **The physics estimate helps the rules** (rules+physics vs rules significant, mostly through the structural-damage
+  trap: stiffness_loss 70 % vs 5 %; it costs some sensor-noise flights, 85 % vs 100 %, because noise biases the
+  identified stiffness).
+- **The LLM lost to the rules again** on fresh seeds (replicates §4's main study).
+- **The same estimate made the LLM much worse** (llm+physics vs llm: 1 vs 32 flights). After stiffness loss the LLM
+  alone kept `nominal` (right) in all 20 flights; with the estimate it slowed to `cautious` (the trap) in all 20, citing
+  the estimate. It also acted less on sensor noise and turbulence. Mode changes after onset over the 120 faulty flights:
+  llm 16, llm+physics 23 (paper §7.6 prints these from the file). Information is not what the LLM lacks.
+
+### Guardian supervisor (uav_flap; dev seeds 1000-1009, then the final test once on seeds 300-319)
+
+Design frozen after the dev run (not changed after seeing it); final test run once. No LLM in either run.
+
+**guardian_dev1000** (generated 2026-09-30T13:56:51+00:00, seeds 1000-1009, complete True)
+
+| Fault | oracle | none | rules | rules+physics | rules+physics_v2 | guardian |
+|---|---|---|---|---|---|---|
+| none | 100 % · 0.0 | 100 % · 0.0 | 100 % · 1.3 | 100 % · 1.3 | 100 % · 3.4 | 100 % · 0.0 |
+| servo_slew | 100 % · 22.8 | 0 % · – | 10 % · 15.7 | 10 % · 15.7 | 20 % · 19.7 | 90 % · 18.2 |
+| stiffness_loss | 100 % · 0.0 | 100 % · 0.0 | 0 % · – | 70 % · 1.5 | 10 % · 19.7 | 90 % · 0.0 |
+| sensor_noise | 100 % · 20.5 | 10 % · 0.0 | 100 % · 22.4 | 70 % · 22.4 | 100 % · 22.4 | 100 % · 22.4 |
+| turbulence_rise | 100 % · 15.9 | 0 % · – | 80 % · 16.9 | 80 % · 16.9 | 90 % · 16.8 | 100 % · 21.4 |
+| loop_delay † | 100 % · 20.5 | 0 % · – | 90 % · 21.8 | 90 % · 21.8 | 10 % · 22.2 | 100 % · 22.2 |
+| flap_effectiveness † | 100 % · 22.8 | 0 % · – | 10 % · 17.5 | 10 % · 17.5 | 50 % · 19.8 | 100 % · 19.7 |
+| **all faulty** | **100 %** · 17.1 | **18 %** · 0.0 | **48 %** · 20.3 | **55 %** · 16.1 | **47 %** · 19.9 | **97 %** · 17.6 |
+
+| Pair | Survived only first | Survived only second | McNemar p | Δ slowed, both survived (s) | Wilcoxon p |
+|---|---|---|---|---|---|
+| rules vs none | 28 | 10 | 0.005 | +22.5 | 1.00 |
+| rules+physics vs rules | 7 | 3 | 0.34 | +0.0 | 1.00 |
+| guardian vs rules | 29 | 0 | < 0.001 | +1.6 | < 0.001 |
+| guardian vs rules+physics | 25 | 0 | < 0.001 | +1.1 | 0.011 |
+| guardian vs none | 48 | 1 | < 0.001 | +2.2 | 1.00 |
+| guardian vs rules+physics_v2 | 30 | 0 | < 0.001 | +0.7 | 0.18 |
+
+**guardian_test300** (generated 2026-09-30T14:20:17+00:00, seeds 300-319, complete True)
+
+| Fault | oracle | none | rules | rules+physics | rules+physics_v2 | guardian |
+|---|---|---|---|---|---|---|
+| none | 100 % · 0.0 | 100 % · 0.0 | 100 % · 3.0 | 100 % · 3.0 | 100 % · 8.3 | 100 % · 0.7 |
+| servo_slew | 100 % · 20.5 | 0 % · – | 20 % · 17.8 | 20 % · 17.8 | 30 % · 19.4 | 80 % · 18.7 |
+| stiffness_loss | 100 % · 0.0 | 100 % · 0.0 | 0 % · – | 55 % · 1.5 | 0 % · – | 80 % · 0.2 |
+| sensor_noise | 100 % · 20.5 | 10 % · 0.0 | 100 % · 22.4 | 90 % · 22.4 | 100 % · 22.4 | 100 % · 22.4 |
+| turbulence_rise | 100 % · 14.8 | 0 % · – | 70 % · 18.1 | 70 % · 18.1 | 75 % · 18.1 | 100 % · 21.3 |
+| loop_delay † | 100 % · 20.5 | 0 % · – | 100 % · 21.8 | 100 % · 21.8 | 0 % · – | 100 % · 22.2 |
+| flap_effectiveness † | 100 % · 21.6 | 0 % · – | 15 % · 19.7 | 15 % · 19.7 | 50 % · 20.6 | 100 % · 19.9 |
+| **all faulty** | **100 %** · 16.3 | **18 %** · 0.0 | **51 %** · 20.8 | **58 %** · 17.7 | **42 %** · 20.4 | **93 %** · 18.0 |
+
+| Pair | Survived only first | Survived only second | McNemar p | Δ slowed, both survived (s) | Wilcoxon p |
+|---|---|---|---|---|---|
+| rules vs none | 59 | 20 | < 0.001 | +22.4 | 0.50 |
+| rules+physics vs rules | 11 | 2 | 0.022 | -0.0 | 0.32 |
+| guardian vs rules | 51 | 0 | < 0.001 | +0.9 | < 0.001 |
+| guardian vs rules+physics | 43 | 1 | < 0.001 | +0.7 | 0.003 |
+| guardian vs none | 94 | 4 | < 0.001 | +2.7 | 0.11 |
+| guardian vs rules+physics_v2 | 61 | 0 | < 0.001 | +0.7 | 0.47 |
+
+**What it says**
+- **Final test: guardian 93 % of faulty flights survived vs rules 51 %, rules+physics 58 %, none 18 %, oracle 100 %**;
+  51 flights saved that the rules lost and none the other way; both held-out faults 100 %; 0.7 s slowed on average in
+  healthy flights (rules 3.0 s). The dev run (97 %) did not overstate it much.
+- **Misses (test):** 4 servo_slew flights (diagnosed or flagged 4.8-5.5 s after onset, slowed to `cautious`, failed
+  within 2 s: the slow servo is latent until the flap must move fast) and 4 stiffness_loss flights (physics v2 read the
+  damaged wing as softer than it is, predicted `nominal` unstable, chose `safe`, which failed; `none` survives all 20).
+  Same two causes as the dev misses (seeds 1004 servo, 1009 stiffness).
+- rules+physics_v2 on its own is worse than v1 here (loop_delay 0 %: it switches to the neural mode that the growing
+  delay then saturates, as found in margin-eval); the guardian avoids this by putting the neural mode last.
+
+
+### LLM off the control path (uav_flap, development seeds)
+
+**Explainer** (`explainer_eval.json`, generated 2026-09-30T15:28:17+00:00, llama3.1:8b, 7 flights, seeds 34000-34006, rules + physics supervising): 34 reports, 34 valid answers, 29 faithful (85 %), 5 unfaithful, 0 failed calls; template shown for 15 % of reports; latency median 4.2 s, p95 6.1 s. Rejection reasons: fault 5.
+Faults the rejected answers named: servo_slew 4, none 1.
+
+**Post-flight reviewer + verification gate** (`review_loop.json`, generated 2026-09-30T15:35:16+00:00, llama3.1:8b, wall time 7 min): anomaly search loop_delay: 8 of 8 flights raised v1's unknown alarm; flap_effectiveness: 2 of 8 flights raised v1's unknown alarm. Reviews 5, valid hypotheses 4, naming the true fault 1; latency median 7.8 s.
+- review seed 45000 (truth loop_delay): flap_effectiveness, severity 0.5-1.2, growth 10-15 s
+- review seed 45001 (truth loop_delay): flap_effectiveness, severity 0.5-1.2, growth 8-12 s
+- review seed 45002 (truth loop_delay): flap_effectiveness, severity 0.8-1.2, growth 10-12 s
+- review seed 45103 (truth flap_effectiveness): no valid hypothesis (ValueError: growth_min_s/growth_max_s = 10/20 must satisfy 0.5 <= min <= max <= 15.0 s)
+- review seed 45106 (truth flap_effectiveness): flap_effectiveness, severity 0.8-1.2, growth 10-15 s
+
+| Candidate | Source | Anomaly (truth) | Hypothesis | Right fault | Gate | Reasons | Fresh flights: new class detected / v1 unknown alarm |
+|---|---|---|---|---|---|---|---|
+| 0 | llm | loop_delay | flap_effectiveness | no | rejected | healthy-flight false alarms 0.133 -> 0.2 (tolerance 0.05); hypothesised class confirmed in 0% of the anomaly's windows (needs >= 50%); unknown alarm still in 97% of the anomaly's windows (allowed <= 10%) | – |
+| 1 | forced_wrong | loop_delay | sensor_noise | no | rejected | F1 of servo_slew 0.581 -> 0.525 (tolerance 0.05); hypothesised class confirmed in 0% of the anomaly's windows (needs >= 50%); unknown alarm still in 99% of the anomaly's windows (allowed <= 10%) | – |
+| 2 | llm | flap_effectiveness | flap_effectiveness | yes | rejected | healthy-flight false alarms 0.133 -> 0.2 (tolerance 0.05) | – |
+| 3 | forced_wrong | flap_effectiveness | servo_slew | no | rejected | healthy-flight false alarms 0.133 -> 0.3 (tolerance 0.05); hypothesised class confirmed in 0% of the anomaly's windows (needs >= 50%); unknown alarm still in 43% of the anomaly's windows (allowed <= 10%) | – |
+
+**What it says**
+- **Explaining works, mostly.** Every call returned a valid answer; 85 % were faithful by the check (mode = decision,
+  fault = diagnosis, no unflagged fault named). All rejections were a wrong `fault` field, mostly `servo_slew`; the
+  operator then sees the template. The check covers fields and literal fault names, not every claim of the free text.
+- **Reviewing did not produce an accepted model.** The LLM named the right fault for flap damage (1 of 1 valid review)
+  but called every loop-delay anomaly flap damage (3 of 3). The gate rejected the wrong hypothesis and both forced-wrong
+  controls on several criteria each, and **also rejected the right one**, only because healthy-flight alarms rose from
+  4 to 6 of 30 flights (tolerance 0.05 = at most 1 extra flight); that candidate explained the anomaly fully and
+  improved every v1 class. The gate is safe but conservative at this sample size (thresholds fixed in advance, not
+  changed). No `models/diagnoser_uav_flap_v2_*` file was written.
+- The flap-damage anomaly was rare: only 2 of 8 searched flap-damage flights raised v1's unknown alarm (loop delay 8 of 8).
+
 ## 5. Decisions log (why things are the way they are)
 
 | Date | Decision | Why |
@@ -318,6 +454,12 @@ rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only wi
 | 2026-09-29 | **Learned fault diagnoser** (`fault_tolerance/diagnoser*.py`, `train-diagnoser` / `eval-diagnoser`, `models/diagnoser_uav_flap.npz` + `.json`, results `outputs/uav_flap/diagnoser_eval.json`, fig14): physics features per 2.5 s window -> encoder -> multi-label head for the 4 known faults + decoder; unknown-fault score = reconstruction error (fixed before evaluation; Mahalanobis only secondary); thresholds from validation flights; loop timing not an input; loop_delay / flap_effectiveness never in training or calibration; `CompositeFault` for 2-3 simultaneous faults; seeds 10000+ / 20000+ / 30000-32055 | Owner: the LLM is too slow and passive to supervise; a fast learned model should analyse the data and an LLM only explain it (`format_diagnosis` report block). Features, not raw signals: the fault signatures are known physics and the model stays tiny (NumPy, sub-millisecond). Weak spots are in the JSON and `research/physics-advisor-plan.md`: slow servo (latent until it limits the flap), false servo alarms in `safe`-mode flights, flap damage rarely flagged as unknown |
 | 2026-09-30 | **Estimator v2** (`margin.estimate_v2`, `FTPhysicsRuleSupervisorV2`, `ft_simulate(margin_version=2)`, `margin-eval`); v1 `estimate`, `FTPhysicsRuleSupervisor` and the `mode_matrices` defaults unchanged. Authority = 3σ flap command/rate (Lyapunov, AR(1) gust + sensor noise) / limit, required only where the identified wing needs control; turbulence and noise from the residual's gust component and a 4th-difference noise level, calibrated on take-off; measured per-sample loop delay in the fit and `mode_matrices(delay=d)`; robust = worst case over the 95 % confidence ellipse (Gauss-Newton covariance inflated to contain a HAC sandwich, plus the calibration's uncertainty); supervisor falls back to point-estimate admissibility when nothing is robustly admissible (`strict` variant without it); flap factor bounds 0.05-2 in v2. Developed on seeds 1000-1004 only | v1 cannot see saturation (flap damage), delay, turbulence or noise. Details and limits: `research/physics-advisor-plan.md` Step 2; results only in `outputs/uav_flap/margin_eval.json`. v1's flap floor 0.3 on a raw healthy fit of ~0.75 capped the identifiable damage at about −60 %; the current airspeed is left out of a mode's transit because it cannot tell apart modes sharing a controller; the ellipse (not a box) keeps the correlation of the two factors; the strict 95 % region after stiffness loss certified no mode at all |
 
+| 2026-09-30 | **Pre-registered physics test run one fault per process** (`flutter-lab-exp/run_pieces.py`, copy kept in `docs/research/runs/run_pieces_physics_test100.py`; snapshot 3a9d325, seeds 100-119, `--llm-latency` = the main benchmark's median); a piece with any LLM fallback would be retried once (none had any) | The first single-process attempt was killed after the `none` fault by a low-memory reaper, and the PC froze once with several experiments running side by side; the pieces use the same function and arguments, only the process boundary differs |
+| 2026-09-30 | **Guardian design frozen after the dev run** (seeds 1000-1009; its two dev misses have known causes: latent slow servo, physics v2 soft-wing bias); final test **once** on seeds 300-319 with none, rules, rules+physics, rules+physics_v2, guardian; **no LLM in the guardian test** | Rules §1: evaluate once on fresh seeds. The LLM-vs-rules comparison is already replicated on two test sets (0-19, 100-119); adding it would have cost ~1 h of LLM time for no new question |
+| 2026-09-30 | Experiments run **one LLM job at a time**; Ollama restarted between the benchmark and the LLM studies | The llama-server working set grew from ~1.4 to ~4.9 GB (model file mapped as it is used) and free RAM dipped to ~0.2 GB with Chrome/VS Code open; queued LLM calls would also hit the 30 s timeout |
+| 2026-09-30 | `plots.ft_figure` draws **every** supervisor in the file (it drew only none/random/rules/llm/oracle, so guardian and the physics supervisors were missing); legend moved above the axes; new supervisor colours from existing palette slots, validated (Design.md) | The Guardian figure did not show the guardian. The main fig12 (seeds 0-19) is unchanged until it is regenerated |
+| 2026-09-30 | Paper generator: §7.6-7.8, abstract/conclusion sentences and discussion bullets for the new studies, computed from the result files (`_ft_supervisor_table`, `_pair_sentence`, `_acted`, `_verdict`, `_later_findings`, `_later_discussion`); fixed a missing f-string that printed `{cite('doyle1978')}` literally | Rules §1: no hand-typed numbers in the draft |
+
 ## 6. Known issues and limitations (be honest about these in the paper)
 
 - Gust entry uses the Wagner lag (not Küssner); the model is linear (no freeplay or LCO yet).
@@ -345,6 +487,15 @@ rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only wi
   `nominal` in all other stiffness_loss flights, so the outcome is very probably unchanged; it is the only LLM
   fallback in 140 flights. Re-run `ft-benchmark` on a machine that cannot sleep to remove it entirely.
 - The Claude backend is untested against the live API (only with mocks).
+- Guardian: its misses are a slow servo recognised too late (latent until the flap must move fast) and physics v2
+  reading a damaged wing as softer than it is (then `safe` is chosen and fails). Its thresholds (0.70, 0.92) and fault
+  responses come from dev data and the fixed-mode table of this benchmark: the same simulator family, fault catalogue and
+  severities; nothing says how it transfers to other fault sizes or a real wing. The guardian test has no LLM
+  supervisor (the LLM was tested on seeds 0-19 and 100-119).
+- Pre-registered test: its `none` piece is from the first attempt (2026-09-29, same snapshot and arguments); the other
+  six pieces ran on 2026-09-30. The metadata's `generated_at` is the first piece's; `pieces` lists each.
+- Memory: with Chrome and VS Code open, llama-server (~5 GB mapped) and experiments leave < 1 GB free on this 16 GB
+  laptop. Run LLM experiments one at a time and close other apps for long runs.
 - Guardian view: not yet looked at in a real browser (no browser in the build session; the JS was exercised in Node
   with a stub DOM against real recordings, and the pages/endpoints were fetched from a running server). Recordings
   live in server memory only (lost on restart). No LLM supervisor there by design; adding one would need the call
@@ -371,7 +522,10 @@ rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only wi
 
 1. The owner's items in `research/submission-checklist.md`: advisor review, venue, author list, library copies of
    the four paywalled papers, read Papacharalampopoulos et al. 2026, edit the generated prose and write the closing
-   sentence of §10.
+   sentence of §10. **Decide the paper's framing**: the evidence now supports "fast learned + physics models decide,
+   the LLM explains" (Guardian 93 % vs rules 51 % on fresh seeds; LLM below rules twice; physics hurt the LLM) more
+   than the current title ("On-board language-model supervision ..."). The title and contributions list in `paper.py`
+   are the owner's call.
 2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
    local model) to show the result is not specific to one model.
 3. Qualitative analysis of the LLM's reasoning (RQ4) from `ft_benchmark.json` → `decisions`.

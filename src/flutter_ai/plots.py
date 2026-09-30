@@ -366,7 +366,8 @@ def review_figure(res: dict, path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     cands, gate = res["candidates"], res["metadata"]["gate"]
-    labels = ["\n".join((f"{'LLM' if c['source'] == 'llm' else 'forced wrong'}: {c['anomaly_kind']}",
+    # one short item per line: on one line the labels of neighbouring candidates ran into each other
+    labels = ["\n".join(("LLM" if c["source"] == "llm" else "forced wrong", c["anomaly_kind"],
                          f"-> {c['hypothesis']['kind']}", "ACCEPT" if c["gate"]["accepted"] else "REJECT"))
               for c in cands]
     x = np.arange(len(cands))
@@ -380,7 +381,7 @@ def review_figure(res: dict, path: Path) -> Path:
     ax.axhline(-gate["f1_tolerance"], color=CRITICAL, lw=1.0, ls="--")
     ax.set_ylabel("Window F1 change vs v1 (eval split)")
     ax.set_title("No regression: every v1 class above the dashed line")
-    ax.legend(loc="lower left", ncol=2)
+    ax.legend(loc="upper left", ncol=2)  # regressions sit near the dashed line at the bottom
     ax = axes[0, 1]
     fa0 = res["v1_regression"]["healthy_any_alarm_rate"] or 0.0
     ax.bar(x, [100 * (c["regression"]["healthy_any_alarm_rate"] or 0.0) for c in cands], width=0.5, color=INK2)
@@ -443,13 +444,19 @@ def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
     return path
 
 
-FT_SUP_COLORS = {"none": "#898781", "random": "#c3c2b7", "rules": "#1baf7a", "llm": "#e87ba4", "oracle": "#0b0b0b"}
+FT_SUP_COLORS = {"rules": "#1baf7a", "rules+physics": "#eda100", "rules+physics_v2": "#e34948", "llm": "#e87ba4",
+                 "llm+physics": "#4a3aa7", "guardian": "#2a78d6", "random": "#c3c2b7", "none": "#898781",
+                 "oracle": "#0b0b0b"}
+# Bar order = dict order: supervisors, then the references (none, oracle) on the right. Validated (dataviz checker,
+# adjacent pairs of each result file's subset): CVD dE >= 9.1 and normal-vision dE >= 17.8 for the physics and guardian
+# studies; the main study's rules/llm pair is 6.1 (deutan), legal with the legend and the paper's tables.
 
 
 def ft_figure(res: dict, path: Path) -> Path:
-    """Survival and mission cost (time slowed down) per fault and supervisor."""
+    """Survival and mission cost (time slowed down) per fault and supervisor (every supervisor in the file)."""
     faults = list(res["faults"])
-    sups = [s for s in ("none", "random", "rules", "llm", "oracle") if s in res["faults"][faults[0]]["supervisors"]]
+    present = res["faults"][faults[0]]["supervisors"]
+    sups = [s for s in FT_SUP_COLORS if s in present] + [s for s in present if s not in FT_SUP_COLORS]
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True)
     x = np.arange(len(faults))
     w = 0.8 / len(sups)
@@ -463,9 +470,12 @@ def ft_figure(res: dict, path: Path) -> Path:
     ax2.set_xticks(x, labels, fontsize=8)
     ax1.set_ylabel("Flights survived (%)")
     ax2.set_ylabel("Time slowed down (s)\n(surviving flights)")
-    ax1.set_title("Fault-tolerant supervision: survival (higher is better) and mission cost (lower is better)")
-    ax1.legend(ncol=len(sups), loc="lower left", fontsize=8)
-    fig.tight_layout()
+    fig.suptitle("Fault-tolerant supervision: survival (higher is better) and mission cost (lower is better)",
+                 fontweight="bold", x=0.01, ha="left")
+    # above the axes: inside them it covered the bars
+    fig.legend(*ax1.get_legend_handles_labels(), ncol=len(sups), loc="upper left", bbox_to_anchor=(0.01, 0.955),
+               fontsize=8, frameon=False)
+    fig.tight_layout(rect=(0, 0, 1, 0.935))
     fig.savefig(path)
     plt.close(fig)
     return path
