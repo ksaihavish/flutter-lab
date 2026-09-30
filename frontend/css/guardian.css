@@ -13,6 +13,7 @@ code { font-size: 12px; background: var(--surface-2); padding: 0 4px; border-rad
 
 /* ---- progress ------------------------------------------------------------ */
 .progress { display: flex; flex-direction: column; gap: 6px; }
+.progress[hidden] { display: none; } /* display: flex above would otherwise override the hidden attribute */
 .progress-track { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .progress-fill { height: 100%; width: 0; background: var(--ink); transition: width 0.3s; }
 

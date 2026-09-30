@@ -504,10 +504,12 @@ Faults the rejected answers named: servo_slew 4, none 1.
   six pieces ran on 2026-09-30. The metadata's `generated_at` is the first piece's; `pieces` lists each.
 - Memory: with Chrome and VS Code open, llama-server (~5 GB mapped) and experiments leave < 1 GB free on this 16 GB
   laptop. Run LLM experiments one at a time and close other apps for long runs.
-- Guardian view: not yet looked at in a real browser (no browser in the build session; the JS was exercised in Node
-  with a stub DOM against real recordings, and the pages/endpoints were fetched from a running server). Recordings
-  live in server memory only (lost on restart). No LLM supervisor there by design; adding one would need the call
-  budget and a busy-GPU guard. A 30 s physics-supervised flight takes minutes of CPU while experiments run.
+- Guardian view: checked in Chrome on 2026-09-30 with a guardian flight (stiffness loss, seed 1000: records in ~11 s,
+  plays back, per-mode admitted/vetoed cards, v2 worst case and turbulence, no console errors). Two bugs found and
+  fixed there: the progress block ignored `hidden` (CSS `display: flex`), and the note under the mode cards described
+  estimator v1 on v2 flights. Recordings live in server memory only (lost on restart). No LLM supervisor there by
+  design; adding one would need the call budget and a busy-GPU guard. A 30 s physics-supervised flight takes tens of
+  seconds of CPU, longer while experiments run.
 - The observer's aero-lag estimate lags about half a step; that is fine, but it is part of the loop.
 - `pytest` takes ~2 min (flutter sweeps); make the slow ones optional if needed.
 - Novelty (search 2026-09-29, full texts checked where openly available; `research/related-work.md`): neural

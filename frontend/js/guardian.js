@@ -341,6 +341,13 @@ function loadFlight(F) {
   const pad = Math.max(1, 0.08 * (hi - lo));
   F._gauge = [lo - pad, hi + pad];
 
+  $("lights-note").textContent = F.estimator_version === 2
+    ? "On-board prediction (estimator v2): spectral radius ρ of each mode's closed loop on the identified wing (ρ < 1 " +
+      "stable) and the flap's authority (3σ command or rate over its limit; ≥ 1: saturation expected), with the measured " +
+      "loop delay and turbulence. The guardian admits a mode only if it is stable and has enough authority where the wing " +
+      "needs control. Still linear: it predicts saturation, not what the saturated loop then does."
+    : "On-board prediction: spectral radius ρ of each mode's closed loop on the identified wing, worst case on the way to " +
+      "that mode's airspeed (ρ < 1 stable). Linear: it cannot see actuator, sensor, timing or turbulence faults, nor saturation.";
   state.flight = F;
   state.keys = {};
   state.lane = {
