@@ -11,6 +11,10 @@ Safety design (see docs/Rules.md), identical for both backends:
 - Wall-clock latency is measured and, by default, applied as a delay in simulation time, so
   results reflect what a real slow-loop supervisor would do. The simulator does not ask a new
   question while an answer is still pending (simulation.py).
+- Off the control path, the same wrapper answers other schema-constrained questions (`ask`: the
+  explainer and the post-flight reviewer of the fault-tolerant study). Every answer is checked
+  again in Python against its schema (`check_schema`); a failed or invalid answer is returned as a
+  failure with its reason, never silently accepted. The caller decides the fallback.
 
 Configuration (environment):
     FLUTTER_AI_LLM_BACKEND   "ollama" (default) or "claude"
@@ -29,6 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from .modes import MODES, make_decision
 from .report import format_report
@@ -64,6 +69,66 @@ RESPONSE_SCHEMA = {
     "required": ["mode", "reasoning"],
     "additionalProperties": False,
 }
+# Local model context (tokens). Every request uses the same value: a different num_ctx makes Ollama reload the model.
+OLLAMA_NUM_CTX = 2048
+# Longest system + user prompt `ask` sends to the local model: ~3 characters per token for reports full of numbers,
+# leaving room for the answer. Longer prompts are refused, never silently truncated by the server.
+OLLAMA_MAX_PROMPT_CHARS = 5200
+
+_JSON_TYPES: dict[str, tuple[type, ...]] = {"object": (dict,), "array": (list,), "string": (str,), "boolean": (bool,),
+                                            "integer": (int,), "number": (int, float)}
+
+
+def check_schema(value, schema: dict, path: str = "$") -> None:
+    """
+    Raise ValueError unless `value` satisfies `schema` (the subset of JSON Schema used in this project: type, enum,
+    properties, required, additionalProperties, minimum/maximum, minLength/maxLength, items). The backends constrain
+    decoding to the schema; this repeats the check in Python, because constrained decoding is not proof.
+    """
+    kind = schema.get("type")
+    if kind is not None:
+        ok = isinstance(value, _JSON_TYPES[kind]) and not (kind in ("integer", "number") and isinstance(value, bool))
+        if not ok:
+            raise ValueError(f"{path}: expected {kind}, got {type(value).__name__}")
+    if "enum" in schema and value not in schema["enum"]:
+        raise ValueError(f"{path}: {value!r} is not one of {schema['enum']}")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ValueError(f"{path}: {value!r} is not a finite number")
+        if "minimum" in schema and value < schema["minimum"]:
+            raise ValueError(f"{path}: {value} < minimum {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            raise ValueError(f"{path}: {value} > maximum {schema['maximum']}")
+    if isinstance(value, str):
+        if len(value) < schema.get("minLength", 0):
+            raise ValueError(f"{path}: shorter than {schema['minLength']} characters")
+        if "maxLength" in schema and len(value) > schema["maxLength"]:
+            raise ValueError(f"{path}: longer than {schema['maxLength']} characters ({len(value)})")
+    if isinstance(value, dict):
+        props = schema.get("properties", {})
+        missing = [k for k in schema.get("required", ()) if k not in value]
+        if missing:
+            raise ValueError(f"{path}: missing {missing}")
+        extra = [k for k in value if k not in props]
+        if extra and schema.get("additionalProperties", True) is False:
+            raise ValueError(f"{path}: unexpected {extra}")
+        for k, v in value.items():
+            if k in props:
+                check_schema(v, props[k], f"{path}.{k}")
+    if isinstance(value, list) and "items" in schema:
+        for i, v in enumerate(value):
+            check_schema(v, schema["items"], f"{path}[{i}]")
+
+
+@dataclass
+class StructuredAnswer:
+    """One schema-constrained answer from `LLMSupervisor.ask`. data is None exactly when the call failed."""
+
+    data: dict | None
+    error: str | None  # why it failed ("TimeoutError: ...", "ValueError: $.mode: ..."); None on success
+    latency_s: float
+    raw: str | None = None  # the model's text as received (kept for audit, also when it failed validation)
+    meta: dict = field(default_factory=dict)  # backend details, e.g. Ollama's prompt_eval_count
 
 
 def llm_backend() -> str:
@@ -142,6 +207,7 @@ class LLMSupervisor:
         self.fallback = RuleSupervisor()
         self.calls = 0
         self.failures = 0
+        self.last_meta: dict = {}
 
     def configure(self, *, system_prompt: str, modes, format: Callable, make: Callable, fallback) -> "LLMSupervisor":
         """Point the same safety wrapper at another task (another enum of modes, report and fallback)."""
@@ -159,7 +225,43 @@ class LLMSupervisor:
         self.failures = 0
 
     def _complete(self, report: str) -> str:
+        return self._complete_with(self.system_prompt, report, self.schema)
+
+    def _complete_with(self, system_prompt: str, user: str, schema: dict) -> str:
         raise NotImplementedError
+
+    def ask(self, system_prompt: str, user: str, schema: dict,
+            check: Callable[[dict], None] | None = None) -> StructuredAnswer:
+        """
+        One schema-constrained question off the control path (explainer, post-flight reviewer), with the decision
+        path's guards: call budget, total-time timeout, transport errors, invalid JSON, the schema checked again in
+        Python and an optional task check (raise ValueError). A failure is returned with its reason; the caller
+        decides the fallback (it must never use a failed answer).
+        """
+        caught: tuple[type[BaseException], ...] = (*self.transport_errors, TimeoutError, ImportError, ValueError,
+                                                   KeyError, StopIteration, TypeError)
+        start, raw = time.perf_counter(), None
+        self.last_meta = {}
+        try:
+            if self.calls >= self.max_calls:
+                raise ValueError(f"LLM call budget of {self.max_calls} reached")
+            self.calls += 1
+            raw = self._complete_with(system_prompt, user, schema)
+            latency = time.perf_counter() - start
+            if latency > self.timeout_s:
+                raise TimeoutError(f"answer took {latency:.1f} s (timeout {self.timeout_s:.0f} s)")
+            data = json.loads(raw)
+            check_schema(data, schema)
+            if check is not None:
+                check(data)
+            return StructuredAnswer(data, None, latency, raw, dict(self.last_meta))
+        except caught as exc:
+            latency = time.perf_counter() - start
+            if isinstance(exc, TimeoutError):
+                latency = min(latency, self.timeout_s)
+            self.failures += 1
+            log.warning("LLM (%s) structured answer rejected (%s: %s)", self.backend, type(exc).__name__, exc)
+            return StructuredAnswer(None, f"{type(exc).__name__}: {exc}", latency, raw, dict(self.last_meta))
 
     def decide(self, f):
         report = self.format(f)
@@ -222,18 +324,28 @@ class OllamaSupervisor(LLMSupervisor):
         with urllib.request.urlopen(req, timeout=self.timeout_s) as r:
             return json.loads(r.read())
 
-    def _body(self, report: str, **options) -> dict:
+    def _body(self, report: str, *, system: str | None = None, schema: dict | None = None, **options) -> dict:
         return {
             "model": self.model,
             "stream": False,
-            "format": self.schema,
+            "format": self.schema if schema is None else schema,
             "keep_alive": "10m",  # stay loaded between decisions (a cold load takes ~15 s)
-            "options": {"temperature": 0, "num_ctx": 2048, **options},
-            "messages": [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": report}],
+            "options": {"temperature": 0, "num_ctx": OLLAMA_NUM_CTX, **options},
+            "messages": [{"role": "system", "content": self.system_prompt if system is None else system},
+                         {"role": "user", "content": report}],
         }
 
-    def _complete(self, report: str) -> str:
+    def _complete(self, report: str) -> str:  # the validated decision path, unchanged (no prompt-length check)
         return self._transport(self._body(report))["message"]["content"]
+
+    def _complete_with(self, system_prompt: str, user: str, schema: dict) -> str:
+        n = len(system_prompt) + len(user)
+        if n > OLLAMA_MAX_PROMPT_CHARS:
+            raise ValueError(f"prompt of {n} characters may not fit the local model's {OLLAMA_NUM_CTX}-token context "
+                             f"(limit {OLLAMA_MAX_PROMPT_CHARS}); shorten it rather than let the server truncate it")
+        resp = self._transport(self._body(user, system=system_prompt, schema=schema))
+        self.last_meta = {k: resp[k] for k in ("prompt_eval_count", "eval_count") if k in resp}
+        return resp["message"]["content"]
 
 
 class ClaudeSupervisor(LLMSupervisor):
@@ -258,13 +370,13 @@ class ClaudeSupervisor(LLMSupervisor):
             self._client = anthropic.Anthropic(timeout=self.timeout_s, max_retries=1)
         return self._client
 
-    def _complete(self, report: str) -> str:
+    def _complete_with(self, system_prompt: str, user: str, schema: dict) -> str:
         response = self._get_client().beta.messages.create(
             model=self.model,
             max_tokens=2048,
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": report}],
-            output_config={"effort": "low", "format": {"type": "json_schema", "schema": self.schema}},
+            system=system_prompt,
+            messages=[{"role": "user", "content": user}],
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )

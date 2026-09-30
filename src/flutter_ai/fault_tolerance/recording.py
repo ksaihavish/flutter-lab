@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from functools import lru_cache
 
 import numpy as np
@@ -100,6 +100,36 @@ def _clean(x):
     if isinstance(x, (float, np.floating)):
         return float(x) if math.isfinite(float(x)) else None
     return x
+
+
+def fly_recorded(job: tuple) -> dict:
+    """
+    Worker (process pool) for the explainer and post-flight review studies: fly one diagnoser_data flight spec with a
+    rule supervisor ("rules" or "rules+physics"), the on-board diagnoser (the committed model) and, if `margin`, the
+    physics estimator; return every supervisor tick (features and decision), the outcome, and the diagnoser's
+    features of the whole flight (diagnoser_data.featurise), which later candidate diagnosers are scored on.
+    """
+    from ..params import get_preset
+    from .diagnoser import DIAGNOSE_EVERY_S
+    from .diagnoser_data import DT, DURATION, _bank, fault_of, featurise
+
+    preset, spec, supervisor, margin = job
+    p = get_preset(preset)
+    Uf, f_hz = healthy_flutter(p)
+    fault = fault_of(spec)
+    rec = _Recorder({"rules": FTRuleSupervisor, "rules+physics": FTPhysicsRuleSupervisor}[supervisor]())
+    t0 = time.perf_counter()
+    r = ft_simulate(p, Uf, f_hz, fault, rec, duration=DURATION, dt=DT, seed=spec["seed"],
+                    cruise_ratio=spec["cruise_ratio"], turbulence_rms=spec["turbulence_rms"], bank_factory=_bank,
+                    forced_mode=None if spec.get("forced_mode") is None else tuple(spec["forced_mode"]),
+                    margin_every_s=MARGIN_EVERY_S if margin else None, diagnose_every_s=DIAGNOSE_EVERY_S)
+    feats = featurise(p, Uf, r, fault)
+    return {"spec": spec, "supervisor": supervisor, "failed": r.failed, "failure_time_s": r.failure_time,
+            "cruise": float(r.airspeed[0]), "t_end": float(r.t[-1]), "flutter_speed": Uf,
+            "switches": [{"time": ta, "mode": m, "decided": dec} for ta, m, dec in r.switch_log],
+            "ticks": [{"features": f.to_dict(), "decision": None if d is None else asdict(d)} for f, d in rec.ticks],
+            "X": feats["X"], "t": feats["t"], "level": feats["level"], "present": feats["present"],
+            "wall_s": round(time.perf_counter() - t0, 2)}
 
 
 def _truth(p: WingParams, fault: Fault, t_end: float,

@@ -357,6 +357,58 @@ def envelope_figure(res: dict, path: Path) -> Path:
     plt.close(fig)
     return path
 
+
+def review_figure(res: dict, path: Path) -> Path:
+    """The verification gate per candidate (fault_tolerance/review.py): regression on v1's eval split and whether the
+    candidate explains the anomalous flights, against the thresholds fixed in advance."""
+    from .fault_tolerance.diagnoser_eval import FAULT_COLORS
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cands, gate = res["candidates"], res["metadata"]["gate"]
+    labels = ["\n".join((f"{'LLM' if c['source'] == 'llm' else 'forced wrong'}: {c['anomaly_kind']}",
+                         f"-> {c['hypothesis']['kind']}", "ACCEPT" if c["gate"]["accepted"] else "REJECT"))
+              for c in cands]
+    x = np.arange(len(cands))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
+    ax = axes[0, 0]
+    v1f = res["v1_regression"]["f1"]
+    for k, cls in enumerate(v1f):
+        d = [(c["regression"]["f1"][cls] or 0.0) - (v1f[cls] or 0.0) for c in cands]
+        ax.plot(x + (k - 1.5) * 0.08, d, "o", ms=6, color=FAULT_COLORS.get(cls, INK2), label=cls)
+    ax.axhline(0.0, color=AXIS, lw=1.0)
+    ax.axhline(-gate["f1_tolerance"], color=CRITICAL, lw=1.0, ls="--")
+    ax.set_ylabel("Window F1 change vs v1 (eval split)")
+    ax.set_title("No regression: every v1 class above the dashed line")
+    ax.legend(loc="lower left", ncol=2)
+    ax = axes[0, 1]
+    fa0 = res["v1_regression"]["healthy_any_alarm_rate"] or 0.0
+    ax.bar(x, [100 * (c["regression"]["healthy_any_alarm_rate"] or 0.0) for c in cands], width=0.5, color=INK2)
+    ax.axhline(100 * fa0, color=MUTED, lw=1.2, label="v1")
+    ax.axhline(100 * (fa0 + gate["false_alarm_tolerance"]), color=CRITICAL, lw=1.0, ls="--", label="v1 + tolerance")
+    ax.set_ylabel("Healthy eval flights with any alarm (%)")
+    ax.set_title("False alarms")
+    ax.legend(loc="upper left")
+    for ax, key, thr, title, below in ((axes[1, 0], "class_share", gate["explain_class_min"],
+                                        "Anomaly explained: hypothesised class confirmed", False),
+                                       (axes[1, 1], "unknown_share", gate["explain_unknown_max"],
+                                        "Anomaly explained: unknown alarm gone", True)):
+        ax.bar(x - 0.15, [100 * c["explanation_v1"][key] for c in cands], width=0.3, color=MUTED, label="v1")
+        ax.bar(x + 0.15, [100 * c["explanation"][key] for c in cands], width=0.3, color=INK2, label="candidate")
+        ax.axhline(100 * thr, color=CRITICAL, lw=1.0, ls="--", label=("at most" if below else "at least") + " (gate)")
+        ax.set_ylim(0, 105)
+        ax.set_ylabel("Anomalous windows after v1's first unknown alarm (%)")
+        ax.set_title(title)
+        ax.legend(loc="upper right")
+    for ax in axes[1]:
+        ax.set_xticks(x, labels, fontsize=7.5)
+    fig.suptitle(f"Post-flight review loop: LLM hypotheses and forced-wrong controls through the verification gate "
+                 f"({res['metadata']['model']})")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
 def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
     """LLM latency, and where supervised runs land relative to the fixed-aggressiveness trade-off curves."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))

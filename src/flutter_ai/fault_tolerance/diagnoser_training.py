@@ -15,6 +15,8 @@ Calibration, on validation flights only (all healthy or known faults):
   - probability threshold 0.5 per class (the natural threshold of a cross-entropy model; not tuned);
   - unknown-fault threshold: the smallest value at which at most OOD_FALSE_ALARM of the validation flights raise a
     confirmed unknown alarm (score above it at CONFIRM consecutive diagnoses); the same for the Mahalanobis score.
+`fit_diagnoser` is the same training for any set of classes and flights; the post-flight review loop (review.py) uses
+it for candidate diagnosers that learn a reviewed fault hypothesis.
 Requires PyTorch (pip install -e ".[train]").
 """
 
@@ -85,17 +87,23 @@ def calibrate_threshold(flight_max: np.ndarray, false_alarm: float = OOD_FALSE_A
 
 
 def _check_known_only(ds: Dataset, split: str) -> None:
-    held = [ALL_KINDS.index(k) for k in HELD_OUT]
+    check_kinds(ds, split, KNOWN)
+
+
+def check_kinds(ds: Dataset, split: str, classes: tuple[str, ...]) -> None:
+    """A diagnoser for `classes` is trained and calibrated on flights with those faults only (v1: never a held-out
+    kind; a reviewed candidate also on its hypothesised kind, never on the anomalous flight itself)."""
+    other = [ALL_KINDS.index(k) for k in ALL_KINDS if k not in classes]
     kinds = {f["kind"] for fl in ds.flights for f in fl["spec"]["faults"]}
-    if ds.present[:, held].any() or not kinds <= set(KNOWN):
-        raise ValueError(f"Split '{split}' contains held-out faults {sorted(kinds - set(KNOWN))}: they must never be "
-                         "used for training or calibration")
+    if ds.present[:, other].any() or not kinds <= set(classes):
+        raise ValueError(f"Split '{split}' contains faults {sorted(kinds - set(classes))} outside the classes "
+                         f"{list(classes)}: they must never be used for training or calibration")
 
 
-def window_scores(Y: np.ndarray, M: np.ndarray, pred: np.ndarray) -> dict:
+def window_scores(Y: np.ndarray, M: np.ndarray, pred: np.ndarray, classes: tuple[str, ...] = KNOWN) -> dict:
     """Per-class precision / recall / F1 over the windows where the label is defined."""
     out = {}
-    for j, c in enumerate(KNOWN):
+    for j, c in enumerate(classes):
         y, p = Y[M[:, j], j], pred[M[:, j], j]
         tp, fp, fn = int(np.sum(y & p)), int(np.sum(~y & p)), int(np.sum(y & ~p))
         prec = tp / (tp + fp) if tp + fp else None
@@ -107,16 +115,38 @@ def window_scores(Y: np.ndarray, M: np.ndarray, pred: np.ndarray) -> dict:
 
 def train_diagnoser(p: WingParams, cfg: DiagnoserConfig | None = None, workers: int = 4, log=print,
                     out_path: Path | None = None) -> DiagnoserModel:
-    torch = _torch()
-    cfg = cfg or DiagnoserConfig()
+    """The v1 diagnoser: the `train` and `val` splits, the four known kinds (-> models/diagnoser_<preset>.npz)."""
     t_start = time.time()
     log(f"Diagnoser for '{p.name}': flight data (seeds >= 1000; cached in outputs/{p.name}/diagnoser_data)")
     train, val = build_split(p, "train", workers, log), build_split(p, "val", workers, log)
     _check_known_only(train, "train")
     _check_known_only(val, "val")
+    model, info = fit_diagnoser(p, train, val, KNOWN, cfg, log)
+    for s in ("train", "val"):
+        info["data"][s] = {"first_seed": SPLITS[s]["first_seed"], **info["data"][s]}
+    info["training_seconds"] = round(time.time() - t_start, 1)
+    out_path = Path(out_path or model_path(p.name))
+    model.save(out_path)
+    meta_file = metadata_path(p.name) if out_path == model_path(p.name) else out_path.with_suffix(".json")
+    meta_file.write_text(json.dumps(info, indent=2) + "\n")
+    log(f"Saved {out_path} and {meta_file} ({info['parameters']} parameters, {info['training_seconds']:.0f} s)")
+    return model
+
+
+def fit_diagnoser(p: WingParams, train: Dataset, val: Dataset, classes: tuple[str, ...] = KNOWN,
+                  cfg: DiagnoserConfig | None = None, log=print) -> tuple[DiagnoserModel, dict]:
+    """
+    Train and calibrate a diagnoser for `classes` on the given flights; nothing is written. Returns the model and its
+    metadata (the JSON saved next to it): `train` for the weights, `val` for early stopping and every threshold.
+    """
+    torch = _torch()
+    cfg = cfg or DiagnoserConfig()
+    t_start = time.time()
+    check_kinds(train, "train", classes)
+    check_kinds(val, "val", classes)
     names = feature_names(p)
-    Ytr, Mtr = train.targets()
-    Yva, Mva = val.targets()
+    Ytr, Mtr = train.targets(classes)
+    Yva, Mva = val.targets(classes)
     mean, std = train.X.mean(axis=0), train.X.std(axis=0)
     std = np.where(std > 1e-9, std, 1.0)  # a feature that never varies in training passes through unscaled
     T = lambda a: torch.tensor(np.asarray(a), dtype=torch.float32)  # noqa: E731
@@ -124,7 +154,7 @@ def train_diagnoser(p: WingParams, cfg: DiagnoserConfig | None = None, workers: 
     Xva_t, Yva_t, Mva_t = T((val.X - mean) / std), T(Yva), T(Mva)
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
-    d, K = len(names), len(KNOWN)
+    d, K = len(names), len(classes)
 
     def mlp(sizes: list[int]):
         layers: list = []
@@ -205,10 +235,11 @@ def train_diagnoser(p: WingParams, cfg: DiagnoserConfig | None = None, workers: 
     precision = np.linalg.inv(R.T @ R / len(R) + 1e-6 * np.eye(cfg.embed))
     meta: dict = {
         "format": MODEL_FORMAT, "version": __version__, "preset": p.name, "params_fingerprint": p.fingerprint(),
-        "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "classes": list(KNOWN),
-        "held_out_never_seen": list(HELD_OUT), "feature_names": list(names), "window_s": WINDOW_S,
-        "diagnose_every_s": DIAGNOSE_EVERY_S, "confirm": CONFIRM, "prob_threshold": cfg.prob_threshold,
-        "label_min_level": {k: min_level(k) for k in KNOWN}, "combinations_in_embedding": len(cents),
+        "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "classes": list(classes),
+        "held_out_never_seen": [k for k in HELD_OUT if k not in classes], "feature_names": list(names),
+        "window_s": WINDOW_S, "diagnose_every_s": DIAGNOSE_EVERY_S, "confirm": CONFIRM,
+        "prob_threshold": cfg.prob_threshold, "label_min_level": {k: min_level(k) for k in classes},
+        "combinations_in_embedding": len(cents),
     }
     model = DiagnoserModel(export(enc), export(cls), export(dec), mean, std, np.array(cents), precision, meta)
     prob_va, rec_va, maha_va = model.predict(val.X)
@@ -219,16 +250,14 @@ def train_diagnoser(p: WingParams, cfg: DiagnoserConfig | None = None, workers: 
     n_va = len(val.flights)
     meta["ood_threshold"] = calibrate_threshold(flight_max_confirmed(rec_va, val.flight, n_va))
     meta["mahalanobis_threshold"] = calibrate_threshold(flight_max_confirmed(maha_va, val.flight, n_va))
-    val_scores = window_scores(Yva, Mva, prob_va >= cfg.prob_threshold)
-    out_path = Path(out_path or model_path(p.name))
-    model.save(out_path)
+    val_scores = window_scores(Yva, Mva, prob_va >= cfg.prob_threshold, classes)
     info = meta | {
         "config": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(cfg).items()},
         "ood_false_alarm_target": OOD_FALSE_ALARM,
-        "data": {s: {"first_seed": SPLITS[s]["first_seed"], "flights": len(ds.flights), "windows": int(len(ds.t)),
+        "data": {s: {"flights": len(ds.flights), "windows": int(len(ds.t)),
                      "failed_flights": sum(f["failed"] for f in ds.flights),
                      "flights_without_windows": sum(f["n_windows"] == 0 for f in ds.flights),
-                     "positive_windows": {c: int(Y[:, j].sum()) for j, c in enumerate(KNOWN)}}
+                     "positive_windows": {c: int(Y[:, j].sum()) for j, c in enumerate(classes)}}
                  for s, ds, Y in (("train", train, Ytr), ("val", val, Yva))},
         "best_epoch": best_epoch, "validation_window_scores": val_scores, "history": history,
         "parameters": int(sum(W.size + b.size for net in (model.encoder, model.classifier, model.decoder)
@@ -236,10 +265,7 @@ def train_diagnoser(p: WingParams, cfg: DiagnoserConfig | None = None, workers: 
         "training_seconds": round(time.time() - t_start, 1),
         "note": "Every value in this file is produced by flutter_ai.fault_tolerance.diagnoser_training.",
     }
-    meta_file = metadata_path(p.name) if out_path == model_path(p.name) else out_path.with_suffix(".json")
-    meta_file.write_text(json.dumps(info, indent=2) + "\n")
     log("   validation F1: " + ", ".join(f"{c} {v['f1']:.2f}" for c, v in val_scores.items() if v["f1"] is not None))
     log(f"   unknown-fault threshold {meta['ood_threshold']:.3f} (reconstruction), "
         f"{meta['mahalanobis_threshold']:.2f} (Mahalanobis, secondary)")
-    log(f"Saved {out_path} and {meta_file} ({info['parameters']} parameters, {info['training_seconds']:.0f} s)")
-    return model
+    return model, info

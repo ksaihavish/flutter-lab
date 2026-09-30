@@ -14,6 +14,8 @@ Command-line interface.
     python -m flutter_ai ft-stability [--preset uav_flap]   dwell-time bound for switching -> ft_stability.json
     python -m flutter_ai train-diagnoser [--preset uav_flap] learned fault diagnoser -> models/diagnoser_<preset>.npz
     python -m flutter_ai eval-diagnoser [--preset uav_flap]  its evaluation -> diagnoser_eval.json + fig14
+    python -m flutter_ai explainer-eval [--preset uav_flap]  LLM explains decisions, faithfulness -> explainer_eval.json
+    python -m flutter_ai review-loop [--preset uav_flap]     LLM post-flight reviewer + verification gate -> review_loop.json
     python -m flutter_ai margin-eval [--preset uav_flap]    physics estimator on dev seeds -> margin_eval.json
     python -m flutter_ai serve     [--port 8000]            web app at http://127.0.0.1:8000
     python -m flutter_ai validate                           compare with NASA BACT wind-tunnel flutter data
@@ -147,7 +149,22 @@ def _ft_benchmark(args) -> None:
     run_ft_benchmark(get_preset(args.preset), seeds=tuple(range(args.first_seed, args.first_seed + args.seeds)),
                      supervisors=sups,
                      apply_latency=not args.no_latency, supervisor_interval=args.interval, tag=args.tag,
-                     llm_latency_s=args.llm_latency)
+                     llm_latency_s=args.llm_latency, workers=args.workers,
+                     faults=tuple(args.faults.split(",")) if args.faults else None)
+
+
+def _explainer_eval(args) -> None:
+    from .fault_tolerance.explainer import run_explainer_eval
+    from .params import get_preset
+
+    run_explainer_eval(get_preset(args.preset), workers=args.workers)
+
+
+def _review_loop(args) -> None:
+    from .fault_tolerance.review import run_review_loop
+    from .params import get_preset
+
+    run_review_loop(get_preset(args.preset), workers=args.workers)
 
 
 def _margin_eval(args) -> None:
@@ -271,7 +288,13 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--first-seed", type=int, default=0, help="first seed (fresh test set: e.g. 100)")
     sp.add_argument("--llm-latency", type=float, default=None,
                     help="apply this fixed latency [s] to LLM answers (measured latency still recorded)")
+    sp.add_argument("--workers", type=int, default=1, help="parallel processes over seeds (not with an LLM supervisor)")
+    sp.add_argument("--faults", default="", help="comma-separated subset of fault kinds (default: all)")
     add("ft-stability", _ft_stability, "dwell-time stability bound for supervisor switching")
+    sp = add("explainer-eval", _explainer_eval, "LLM explainer of supervisor decisions: faithfulness on dev flights")
+    sp.add_argument("--workers", type=int, default=3)
+    sp = add("review-loop", _review_loop, "post-flight LLM reviewer + verification gate for retrained diagnosers")
+    sp.add_argument("--workers", type=int, default=3)
     for name, fn, help_ in (("train-diagnoser", _train_diagnoser, "train the learned fault diagnoser (needs PyTorch)"),
                             ("eval-diagnoser", _eval_diagnoser, "evaluate the learned fault diagnoser")):
         sp = add(name, fn, help_)

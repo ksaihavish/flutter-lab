@@ -176,21 +176,29 @@ def _cache_key(p: WingParams, split: str) -> dict:
             "features": list(feature_names(p)), "duration": DURATION, "dt": DT}
 
 
-def build_split(p: WingParams, split: str, workers: int = 4, log=print, n: int | None = None) -> Dataset:
-    """Simulate (or load from the cache in outputs/<preset>/diagnoser_data/) every flight of a split."""
-    path = _cache_path(p, split)
-    key = _cache_key(p, split) | ({"n": n} if n is not None else {})
-    if path.exists():
-        data = np.load(path, allow_pickle=False)
-        meta = json.loads(str(data["meta"]))
-        if meta["key"] == key:
-            log(f"  {split}: {len(meta['flights'])} flights from the cache {path}")
-            return Dataset(data["X"], data["t"], data["flight"], data["level"], data["present"], meta["flights"])
+def load_dataset(path: Path, key: dict) -> Dataset | None:
+    """A cached dataset, or None if there is none or it was built for another key (flights, features, version)."""
+    if not path.exists():
+        return None
+    data = np.load(path, allow_pickle=False)
+    meta = json.loads(str(data["meta"]))
+    if meta["key"] != key:
+        return None
+    return Dataset(data["X"], data["t"], data["flight"], data["level"], data["present"], meta["flights"])
+
+
+def save_dataset(path: Path, ds: Dataset, key: dict, wall_s: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, X=ds.X, t=ds.t, flight=ds.flight, level=ds.level, present=ds.present,
+                        meta=np.array(json.dumps({"key": key, "flights": ds.flights, "wall_s": round(wall_s, 1)})))
+
+
+def simulate_flights(p: WingParams, specs: list[dict], workers: int = 4, log=print, label: str = "flights") -> Dataset:
+    """Simulate and featurise flights given as flight_spec-style dicts (in worker processes; order kept)."""
     fa = flutter_analysis(p)
     if fa.flutter_speed is None or fa.flutter_frequency_hz is None:
         raise ValueError(f"No flutter found for '{p.name}'")
-    n_flights = SPLITS[split]["n"] if n is None else n
-    jobs = [(p.name, flight_spec(split, i), fa.flutter_speed, fa.flutter_frequency_hz) for i in range(n_flights)]
+    jobs = [(p.name, spec, fa.flutter_speed, fa.flutter_frequency_hz) for spec in specs]
     t0 = time.time()
     outs: list[dict | None] = [None] * len(jobs)
     with ProcessPoolExecutor(max_workers=max(1, min(workers, os.cpu_count() or 1))) as ex:
@@ -198,7 +206,7 @@ def build_split(p: WingParams, split: str, workers: int = 4, log=print, n: int |
         for done, fut in enumerate(as_completed(futures), 1):
             outs[futures[fut]] = fut.result()
             if done % 50 == 0 or done == len(jobs):
-                log(f"  {split}: {done}/{len(jobs)} flights ({time.time() - t0:.0f} s)")
+                log(f"  {label}: {done}/{len(jobs)} flights ({time.time() - t0:.0f} s)")
     flights: list[dict] = []
     parts: list[tuple[np.ndarray, ...]] = []
     for i, o in enumerate(outs):
@@ -207,9 +215,30 @@ def build_split(p: WingParams, split: str, workers: int = 4, log=print, n: int |
         parts.append((o["X"], o["t"], np.full(len(o["t"]), i), o["level"], o["present"]))
     X, t, fl, level, present = (np.concatenate([q[j] for q in parts]) for j in range(5))
     if not np.all(np.isfinite(X)):
-        raise ValueError(f"Non-finite diagnoser features in split '{split}': a feature is broken, fix it (never mask)")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, X=X, t=t, flight=fl, level=level, present=present,
-                        meta=np.array(json.dumps({"key": key, "flights": flights, "wall_s": round(time.time() - t0, 1)})))
-    log(f"  {split}: saved {len(flights)} flights, {len(t)} windows to {path} ({time.time() - t0:.0f} s)")
+        raise ValueError(f"Non-finite diagnoser features in '{label}': a feature is broken, fix it (never mask)")
     return Dataset(X, t, fl.astype(int), level, present.astype(bool), flights)
+
+
+def merge_datasets(*parts: Dataset) -> Dataset:
+    """One dataset from several (flight indices renumbered; flights kept in order)."""
+    offsets = np.cumsum([0] + [len(d.flights) for d in parts[:-1]])
+    return Dataset(np.concatenate([d.X for d in parts]), np.concatenate([d.t for d in parts]),
+                   np.concatenate([d.flight + o for d, o in zip(parts, offsets)]).astype(int),
+                   np.concatenate([d.level for d in parts]), np.concatenate([d.present for d in parts]).astype(bool),
+                   [f for d in parts for f in d.flights])
+
+
+def build_split(p: WingParams, split: str, workers: int = 4, log=print, n: int | None = None) -> Dataset:
+    """Simulate (or load from the cache in outputs/<preset>/diagnoser_data/) every flight of a split."""
+    path = _cache_path(p, split)
+    key = _cache_key(p, split) | ({"n": n} if n is not None else {})
+    cached = load_dataset(path, key)
+    if cached is not None:
+        log(f"  {split}: {len(cached.flights)} flights from the cache {path}")
+        return cached
+    n_flights = SPLITS[split]["n"] if n is None else n
+    t0 = time.time()
+    ds = simulate_flights(p, [flight_spec(split, i) for i in range(n_flights)], workers, log, split)
+    save_dataset(path, ds, key, time.time() - t0)
+    log(f"  {split}: saved {len(ds.flights)} flights, {len(ds.t)} windows to {path} ({time.time() - t0:.0f} s)")
+    return ds

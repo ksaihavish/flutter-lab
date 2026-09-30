@@ -28,12 +28,15 @@ from ..params import WingParams
 from ..paths import OUTPUTS_DIR
 from .faults import FAULTS, benchmark_fault
 from .simulate import MODE_ORDER, ft_simulate
-from .supervisors import FTPhysicsRuleSupervisor, FTRandomSupervisor, FTRuleSupervisor, oracle_mode
+from .supervisors import (FTPhysicsRuleSupervisor, FTPhysicsRuleSupervisorV2, FTRandomSupervisor, FTRuleSupervisor,
+                          GuardianSupervisor, oracle_mode)
 
 DURATION = 30.0
 PAIRS = (("llm", "rules"), ("llm", "none"), ("rules", "none"), ("llm", "random"), ("rules", "random"),
-         ("rules+physics", "rules"), ("llm+physics", "llm"), ("llm+physics", "rules+physics"))
+         ("rules+physics", "rules"), ("llm+physics", "llm"), ("llm+physics", "rules+physics"),
+         ("guardian", "rules"), ("guardian", "rules+physics"), ("guardian", "none"), ("guardian", "rules+physics_v2"))
 MARGIN_EVERY_S = 1.0  # on-board estimator period for the physics-informed supervisors
+DIAGNOSE_EVERY_S = 0.5  # learned diagnoser period (the guardian)
 KEEP = ("failed", "failure_time_s", "cost_J", "slowed_s", "reaction_s", "first_response", "final_mode",
         "switches", "decisions", "llm_fallbacks")
 
@@ -45,6 +48,10 @@ def _make(kind: str, seed: int):
         return FTRuleSupervisor()
     if kind == "rules+physics":
         return FTPhysicsRuleSupervisor()
+    if kind == "rules+physics_v2":
+        return FTPhysicsRuleSupervisorV2()
+    if kind == "guardian":
+        return GuardianSupervisor()
     if kind == "llm+physics":
         from .llm import make_ft_llm_supervisor
 
@@ -56,6 +63,41 @@ def _make(kind: str, seed: int):
 
         return make_ft_llm_supervisor()
     raise ValueError(f"Unknown supervisor '{kind}'")
+
+
+def _sim_options(kind: str) -> dict:
+    """What each supervisor needs on board: the v1 estimator (pre-registered '+physics' supervisors), estimator v2,
+    or v2 plus the learned diagnoser (the guardian)."""
+    if kind.endswith("+physics"):
+        return {"margin_every_s": MARGIN_EVERY_S}
+    if kind == "rules+physics_v2":
+        return {"margin_every_s": MARGIN_EVERY_S, "margin_version": 2}
+    if kind == "guardian":
+        return {"margin_every_s": MARGIN_EVERY_S, "margin_version": 2, "diagnose_every_s": DIAGNOSE_EVERY_S}
+    return {}
+
+
+def _seed_runs(p: WingParams, Uf: float, f_hz: float, kind: str, s: int, supervisors: tuple[str, ...],
+               apply_latency: bool, supervisor_interval: float, llm_latency_s: float | None) -> dict:
+    """Every flight of one (fault, seed): the oracle's fixed-mode runs and each supervisor's flight."""
+    fault = benchmark_fault(kind)
+    best, runs = oracle_mode(p, Uf, f_hz, fault, s, duration=DURATION)
+    out: dict = {"best": best, "modes": {m: {k: runs[m][k] for k in KEEP} for m in MODE_ORDER}, "sup": {},
+                 "decisions": []}
+    for sup in supervisors:
+        r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s,
+                        apply_latency=apply_latency, supervisor_interval=supervisor_interval,
+                        fixed_llm_latency_s=llm_latency_s, **_sim_options(sup))
+        out["sup"][sup] = {k: r.metrics[k] for k in KEEP}
+        if sup != "random":
+            out["decisions"] += [{"supervisor": sup, "seed": s, "time": d.time, "mode": d.mode, "source": d.source,
+                                  "latency_s": d.latency_s, "applied_at": d.applied_at, "outcome": d.outcome,
+                                  "reasoning": d.reasoning} for d in r.decisions]
+    return out
+
+
+def _seed_job(args: tuple) -> dict:
+    return _seed_runs(*args)
 
 
 def _summary(ms: list[dict], oracle: list[str]) -> dict:
@@ -94,8 +136,10 @@ def _slow(x: float | None) -> str:
 def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none", "rules", "random", "llm"),
                      out_dir: Path | None = None, make_figure: bool = True, log=print, *, apply_latency: bool = True,
                      supervisor_interval: float = 0.25, tag: str = "", faults: tuple[str, ...] | None = None,
-                     llm_latency_s: float | None = None) -> dict:
+                     llm_latency_s: float | None = None, workers: int = 1) -> dict:
     """
+    workers > 1 flies the seeds of a fault in parallel processes (same flights and results as one process); refused
+    with an LLM supervisor, whose calls would queue on one model.
     Ablations: apply_latency=False applies every answer at once (simulation time stops while the LLM thinks), which
     separates judgement from speed; supervisor_interval sets how often every supervisor is asked. A tag writes
     ft_benchmark_<tag>.json / fig12_fault_tolerance_<tag>.png, so the main result file is never overwritten.
@@ -128,6 +172,14 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
     everything: dict[str, list[dict]] = {}
     suffix = f"_{tag}" if tag else ""
     res["metadata"]["file"] = f"ft_benchmark{suffix}.json"
+    if workers > 1 and any(s.startswith("llm") for s in supervisors):
+        raise ValueError("workers > 1 is not allowed with an LLM supervisor (its calls would queue on one model)")
+    res["metadata"]["workers"] = workers
+    pool = None
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        pool = ProcessPoolExecutor(max_workers=workers)
     for kind, spec in FAULTS.items():
         if faults is not None and kind not in faults:
             continue
@@ -136,22 +188,17 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
         decisions: list[dict] = []
         oracle_modes: list[str] = []
         mode_table: dict[str, list[dict]] = {m: [] for m in MODE_ORDER}
-        for s in seeds:
-            best, runs = oracle_mode(p, Uf, f_hz, fault, s, duration=DURATION)
+        args = [(p, Uf, f_hz, kind, s, tuple(supervisors), apply_latency, supervisor_interval, llm_latency_s)
+                for s in seeds]
+        for one in (pool.map(_seed_job, args) if pool is not None else map(_seed_job, args)):
+            best, runs = one["best"], one["modes"]
             oracle_modes.append(best)
             for m in MODE_ORDER:
                 mode_table[m].append(runs[m])
-            per.setdefault("oracle", []).append({k: runs[best if best in runs else "safe"][k] for k in KEEP})
+            per.setdefault("oracle", []).append(runs[best if best in runs else "safe"])
             for sup in supervisors:
-                r = ft_simulate(p, Uf, f_hz, fault, _make(sup, s), duration=DURATION, seed=s,
-                                apply_latency=apply_latency, supervisor_interval=supervisor_interval,
-                                margin_every_s=MARGIN_EVERY_S if sup.endswith("+physics") else None,
-                                fixed_llm_latency_s=llm_latency_s)
-                per.setdefault(sup, []).append({k: r.metrics[k] for k in KEEP})
-                if sup != "random":
-                    decisions += [{"supervisor": sup, "seed": s, "time": d.time, "mode": d.mode, "source": d.source,
-                                   "latency_s": d.latency_s, "applied_at": d.applied_at, "outcome": d.outcome,
-                                   "reasoning": d.reasoning} for d in r.decisions]
+                per.setdefault(sup, []).append(one["sup"][sup])
+            decisions += one["decisions"]
         if kind != "none":
             for sup, ms in per.items():
                 everything.setdefault(sup, []).extend(ms)
@@ -166,6 +213,8 @@ def run_ft_benchmark(p: WingParams, seeds=tuple(range(20)), supervisors=("none",
             f"{k} {v['survival']:.0%} slow {_slow(v['slowed_s_mean'])}" for k, v in summary.items())
             + f"   ({time.time() - t0:.0f} s)")
         _save(res, everything, out_dir, t0)
+    if pool is not None:
+        pool.shutdown()
     for label, st in res["pooled_faulty"]["paired"].items():
         say(f"  pooled {label:16s}: survived only by candidate {st['survived_only_candidate']:3d}, only by reference "
             f"{st['survived_only_reference']:3d} (McNemar p = {st['mcnemar_p']:.2g}); slowed diff over "
