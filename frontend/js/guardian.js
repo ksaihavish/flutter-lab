@@ -37,7 +37,7 @@ const ICON_OFF = "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8
 
 const state = {
   options: null,
-  supervisor: "rules+physics",
+  supervisor: "guardian",
   flight: null, // the finished recording
   busy: false,
   pollToken: 0,
@@ -220,9 +220,11 @@ function renderSupervisorButtons() {
   if (sup && sup.needs_estimator) { box.checked = true; box.disabled = true; }
   else box.disabled = false;
   const every = state.options.estimator_every_s;
-  $("estimator-hint").textContent = sup && sup.needs_estimator
-    ? `Required by ${sup.label.toLowerCase()}: it runs every ${every} s of flight time and is the slow part of the computation.`
-    : `Runs every ${every} s of flight time, for display only (this supervisor does not read it). Off = much faster.`;
+  $("estimator-hint").textContent = state.supervisor === "guardian"
+    ? `Required by the guardian: estimator v2 (control authority, measured delay, worst case over the fit's uncertainty) every ${every} s, plus the learned fault diagnoser every 0.5 s.`
+    : sup && sup.needs_estimator
+      ? `Required by ${sup.label.toLowerCase()}: it runs every ${every} s of flight time and is the slow part of the computation.`
+      : `Runs every ${every} s of flight time, for display only (this supervisor does not read it). Off = much faster.`;
 }
 
 function requestBody() {
@@ -652,7 +654,10 @@ function renderEstimateTiles(F, est) {
   } else {
     $("k-est").textContent = "None found";
   }
-  $("k-est-sub").textContent = `Identified at ${fmt(est.time, 1)} s: ${params}` + (est.converged ? "" : " (fit did not converge)");
+  $("k-est-sub").textContent = `Identified at ${fmt(est.time, 1)} s: ${params}` + (est.converged ? "" : " (fit did not converge)") +
+    // estimator v2 (guardian flights): worst case over the 95 % confidence region, and the turbulence it measures
+    (est.version === 2 && finite(est.flutter_speed_worst) ? `; worst case ${fmt(est.flutter_speed_worst)} m/s` : "") +
+    (est.version === 2 && finite(est.turbulence_rms) ? `; turbulence ${fmt(est.turbulence_rms, 2)} m/s RMS` : "");
   if (finite(est.margin)) {
     $("k-margin").textContent = signedPct(est.margin);
     $("k-margin-sub").textContent = est.margin < 0
@@ -734,6 +739,8 @@ function renderLights(F, est, mode) {
   const box = $("lights");
   box.replaceChildren();
   const rad = est ? est.mode_spectral_radius || {} : {};
+  const verdict = est && est.verdict ? est.verdict : null; // guardian flights: which modes it may choose
+  const perMode = est && est.modes ? est.modes : {};
   for (const m of F.mode_order) {
     const r = rad[m];
     const card = el("div", `light${m === mode ? " current" : ""}`);
@@ -742,7 +749,17 @@ function renderLights(F, est, mode) {
     if (m === mode) head.appendChild(el("span", "tag", "current"));
     card.appendChild(head);
     card.appendChild(el("div", "light-sub", modeSpeedText(F, m)));
-    if (finite(r)) {
+    if (verdict) {
+      const ok = verdict.admissible[m];
+      card.appendChild(statusCell(ok ? "ok" : "fail", ok ? "Admitted" : `Vetoed: ${verdict.why[m] || "not admissible"}`));
+      const ratio = (perMode[m] || {}).authority_ratio;
+      const bits = [finite(r) ? `ρ = ${r.toFixed(3)}` : null, finite(ratio) ? `authority ${ratio.toFixed(2)}` : null];
+      const num = el("div", "light-num", bits.filter(Boolean).join(" · "));
+      num.title = "ρ: spectral radius on the identified wing (< 1 stable). Authority: 3σ flap command or rate over its " +
+        "limit (≥ 1: saturation expected). After structural damage the guardian holds speed unless the current mode is " +
+        "predicted unstable, even if it is vetoed for authority.";
+      card.appendChild(num);
+    } else if (finite(r)) {
       card.appendChild(statusCell(r < 1 ? "ok" : "fail", r < 1 ? "Predicted stable" : "Predicted unstable"));
       card.appendChild(el("div", "light-num", `ρ = ${r.toFixed(3)}`));
     } else {
@@ -750,7 +767,9 @@ function renderLights(F, est, mode) {
     }
     box.appendChild(card);
   }
-  $("lights-time").textContent = est ? `on-board estimate from t = ${fmt(est.time, 1)} s` : "";
+  $("lights-time").textContent = !est ? ""
+    : verdict ? `the guardian's reading of the estimate from t = ${fmt(est.time, 1)} s (structural damage: it holds speed unless the current mode is predicted unstable)`
+      : `on-board estimate from t = ${fmt(est.time, 1)} s`;
 }
 
 function renderLog(F, decI) {

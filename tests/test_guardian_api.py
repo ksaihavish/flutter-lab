@@ -35,8 +35,9 @@ def _fly(body: dict, timeout_s: float = 600.0) -> tuple[dict, dict]:
 def test_options_list_faults_supervisors_and_no_llm():
     o = client.get("/api/guardian/options").json()
     assert "none" in o["faults"] and "stiffness_loss" in o["faults"]
-    assert set(o["supervisors"]) == {"none", "rules", "rules+physics"}  # no LLM in the live view
-    assert o["defaults"]["supervisor"] == "rules+physics" and o["defaults"]["estimator"] is True
+    assert set(o["supervisors"]) == {"none", "rules", "rules+physics", "guardian"}  # no LLM in the live view
+    assert o["defaults"]["supervisor"] == "guardian" and o["defaults"]["estimator"] is True
+    assert o["supervisors"]["guardian"]["needs_estimator"] is True
     assert o["mode_order"] == list(MODE_ORDER)
     assert o["presets"][0]["name"] == "uav_flap" and o["presets"][0]["flutter_speed"] > 0
 
@@ -100,6 +101,33 @@ def test_physics_supervised_flight_records_everything_the_panel_needs():
     # identical request: the same flight, already finished
     again = client.post("/api/guardian/flights", json=body)
     assert again.status_code == 202 and again.json()["id"] == started["id"] and again.json()["status"] == "done"
+
+
+def test_guardian_flight_is_the_benchmark_flight_with_diagnosis_and_verdicts():
+    from flutter_ai.fault_tolerance.benchmark import _make, _sim_options
+    from flutter_ai.fault_tolerance.recording import healthy_flutter
+    from flutter_ai.fault_tolerance.simulate import ft_simulate
+
+    body = {"fault": "servo_slew", "onset": 5.0, "ramp": 0.0, "duration": 9.0, "seed": 1001,
+            "supervisor": "guardian", "max_points": 300}
+    _, status = _fly(body)
+    res = status["result"]
+    assert res["estimator_version"] == 2 and res["diagnoser_every_s"] == pytest.approx(0.5)
+    assert all(d["source"] == "guardian" for d in res["decisions"])
+    # the learned diagnosis the guardian read, on the ticks after the diagnoser's first window
+    assert any(t["diagnosis"] is not None for t in res["ticks"])
+    # estimator v2, each estimate with the guardian's own reading of it (physics_verdict)
+    est = res["estimates"]
+    assert est and all(e["version"] == 2 and set(e["verdict"]["admissible"]) == set(MODE_ORDER) for e in est)
+    assert all(set(e["verdict"]["why"]) <= set(e["verdict"]["admissible"]) | {"all"} for e in est)
+
+    # recording does not change the flight: the benchmark's ft_simulate with the same options flies the same mission
+    p = get_preset("uav_flap")
+    Uf, f_hz = healthy_flutter(p)
+    r = ft_simulate(p, Uf, f_hz, Fault("servo_slew", onset=5.0, ramp=0.0, severity=res["fault"]["severity"]),
+                    _make("guardian", 1001), duration=9.0, seed=1001, **_sim_options("guardian"))
+    assert r.failed == res["failed"]
+    assert [(round(t, 6), m) for t, m, _ in r.switch_log] == [(round(s["time"], 6), s["mode"]) for s in res["switches"]]
 
 
 def test_unsupervised_flight_without_estimator():

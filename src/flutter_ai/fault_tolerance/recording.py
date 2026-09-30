@@ -22,11 +22,11 @@ import numpy as np
 
 from ..flutter import _first_crossing, default_velocities, flutter_analysis, max_oscillatory_real
 from ..params import WingParams
-from .benchmark import MARGIN_EVERY_S
+from .benchmark import MARGIN_EVERY_S, _sim_options
 from .diagnostics import FTFeatures, format_ft_report
 from .faults import FAULTS, Fault, plant_at
 from .simulate import FT_MODES, MIN_DWELL_S, MODE_ORDER, FTDecision, ft_simulate
-from .supervisors import FTPhysicsRuleSupervisor, FTRuleSupervisor
+from .supervisors import FTPhysicsRuleSupervisor, FTRuleSupervisor, GuardianSupervisor, physics_verdict
 
 # The LLM supervisors are deliberately not offered: this view must never call a model (see Rules.md §5 and the
 # ft-benchmark command for LLM runs).
@@ -40,7 +40,14 @@ SUPERVISORS: dict[str, dict] = {
     "rules+physics": {"label": "Rules + physics", "needs_estimator": True,
                       "description": "The same symptom rules decide whether to act; the on-board physics estimate "
                                      "vetoes any mode predicted unstable on the identified wing."},
+    "guardian": {"label": "Guardian", "needs_estimator": True,
+                 "description": "The learned fault diagnoser names the fault and its pre-verified response is taken; "
+                                "the physics estimate (v2: authority, delay, worst case) admits or vetoes each mode; "
+                                "structural damage holds speed. No language model."},
 }
+# How each supervisor is flown: exactly as in ft-benchmark (the guardian needs estimator v2 and the diagnoser)
+_FACTORY = {"none": None, "rules": FTRuleSupervisor, "rules+physics": FTPhysicsRuleSupervisor,
+            "guardian": GuardianSupervisor}
 TRUTH_SAMPLE_S = 0.05  # fault levels are piecewise constant (faults.N_LEVELS steps); this grid finds every step
 
 
@@ -174,12 +181,13 @@ def record_flight(p: WingParams, fault: Fault, supervisor: str = "rules+physics"
         if progress is not None:
             progress("ground_truth", fraction, t_end)
 
-    inner = {"none": None, "rules": FTRuleSupervisor, "rules+physics": FTPhysicsRuleSupervisor}[supervisor]
+    inner = _FACTORY[supervisor]
     rec = _Recorder(None if inner is None else inner(), on_tick=on_tick)
+    options = _sim_options(supervisor) if supervisor == "guardian" else \
+        {"margin_every_s": MARGIN_EVERY_S if estimator else None}
 
     t0 = time.perf_counter()
-    r = ft_simulate(p, Uf, f_hz, fault, rec, duration=duration, seed=seed,
-                    margin_every_s=MARGIN_EVERY_S if estimator else None)
+    r = ft_simulate(p, Uf, f_hz, fault, rec, duration=duration, seed=seed, **options)
     flight_s = time.perf_counter() - t0
     t_end = float(r.t[-1])
     t1 = time.perf_counter()
@@ -214,7 +222,8 @@ def record_flight(p: WingParams, fault: Fault, supervisor: str = "rules+physics"
         m = f.margin
         if m is not None and m["time"] not in seen:
             seen.add(m["time"])
-            estimates.append(m)
+            # the guardian's own reading of this estimate (which modes it may choose, and why not)
+            estimates.append({**m, "verdict": asdict(physics_verdict(m, Uf))} if supervisor == "guardian" else m)
         ticks.append({
             "time": f.time, "airspeed": f.airspeed, "airspeed_ratio": f.airspeed_ratio, "mode": f.mode,
             "risk": f.risk, "energy_growth": f.energy_growth, "saturation_fraction": f.saturation_fraction,
@@ -243,7 +252,9 @@ def record_flight(p: WingParams, fault: Fault, supervisor: str = "rules+physics"
                   "benchmark_severity": spec["severity"], "onset": fault.onset, "ramp": fault.ramp,
                   "severity": fault.severity},
         "supervisor": {"id": supervisor, **SUPERVISORS[supervisor]},
-        "estimator_every_s": MARGIN_EVERY_S if estimator else None,
+        "estimator_every_s": options.get("margin_every_s"),
+        "estimator_version": options.get("margin_version", 1) if options.get("margin_every_s") else None,
+        "diagnoser_every_s": options.get("diagnose_every_s"),
         "min_dwell_s": MIN_DWELL_S,
         "mode_order": list(MODE_ORDER),
         "modes": modes,

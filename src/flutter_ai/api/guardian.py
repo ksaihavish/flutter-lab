@@ -124,6 +124,12 @@ def _validate(req: GuardianIn) -> tuple[WingParams, Fault]:
     if not neural_available(p):
         raise HTTPException(409, "The controller bank's 'robust' mode needs the neural policy: "
                                  f"run python -m flutter_ai train --preset {p.name}")
+    if req.supervisor == "guardian":
+        from ..fault_tolerance.diagnoser import model_path
+
+        if not model_path(p.name).exists():
+            raise HTTPException(409, "The guardian needs the learned fault diagnoser: "
+                                     f"run python -m flutter_ai train-diagnoser --preset {p.name}")
     return p, fault
 
 

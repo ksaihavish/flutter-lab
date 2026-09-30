@@ -146,7 +146,8 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 A 30 s fault-tolerant flight with the on-board estimator takes tens of seconds to minutes of CPU, so it is a job:
 
 1. `GET /api/guardian/options`: faults (`FAULTS` + benchmark onset/ramp/size), supervisors (`none`, `rules`,
-   `rules+physics`; **no LLM**: this view never calls a model), FT modes, defaults (`GuardianIn`).
+   `rules+physics`, `guardian` (default; estimator v2 + learned diagnoser, flown exactly as in `ft-benchmark`,
+   each estimate carries the guardian's `physics_verdict`); **no LLM**: this view never calls a model), FT modes, defaults (`GuardianIn`).
 2. `POST /api/guardian/flights` (`GuardianIn`: fault, onset ≥ 4.5 s, ramp, size, supervisor, estimator, duration 6–60 s,
    seed, default 1000 = development seed) → 202 `{id, status}`. Validation errors: unknown preset 404; other presets,
    unknown fault, onset after the end, rules + physics without the estimator 422; missing neural policy 409; more

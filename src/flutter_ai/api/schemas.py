@@ -88,7 +88,7 @@ class GuardianIn(BaseModel):
     onset: float | None = Field(None, ge=4.5, le=60)
     ramp: float | None = Field(None, ge=0, le=30)
     severity: float | None = Field(None, gt=0, le=3)
-    supervisor: Literal["none", "rules", "rules+physics"] = "rules+physics"
+    supervisor: Literal["none", "rules", "rules+physics", "guardian"] = "guardian"
     estimator: bool = True  # run the on-board flutter-margin estimator (required by rules+physics)
     duration: float = Field(30.0, ge=6, le=60)
     # 1000 is the development seed; the benchmark's test seeds are 0-19 (100-119 are kept fresh for the physics study)

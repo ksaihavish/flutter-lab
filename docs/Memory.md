@@ -48,7 +48,7 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
 | Paper prep | ✅ 2026-09-30 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5-§7.8 (FT study, pre-registered physics test, Guardian, LLM explainer/reviewer), the abstract's and conclusion's later sentences, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
-| Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics; no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
+| Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics / **guardian** (default since 2026-09-30: estimator v2 + diagnoser, same flight as ft-benchmark, per-mode admitted/vetoed from its physics verdict); no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
 | Dataset intake | ✅ format + `check-data` | No time-history dataset yet; spec in `data/README.md` |
 | BACT preset + validation | ✅ 2026-09-29 | Flutter freq 3.99 Hz vs ~4 Hz measured (−0.2 %); flutter q 183 vs ~148 psf (+24 %); NASA's model 150.8 psf. Neural policy `neural_policy_bact.npz` trained |
 | Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker |
@@ -537,8 +537,7 @@ Faults the rejected answers named: servo_slew 4, none 1.
 2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
    local model) to show the result is not specific to one model. Before claiming the Guardian's novelty, search
    fault detection and isolation (FDI) and flutter-margin monitoring literature (`related-work.md` §7).
-   For live demos, the Guardian view (`/guardian`) offers none / rules / rules + physics only; adding the `guardian`
-   supervisor there is a small change (needs the diagnoser in the recording path).
+   The Guardian view now offers the `guardian` supervisor (2026-09-30).
 3. Qualitative analysis of the LLM's reasoning (RQ4) from `ft_benchmark.json` → `decisions`.
 4. Improve BACT accuracy (compressibility; second flutter point) and use TM-107734 for tunnel turbulence.
 5. Measured time histories from a rig, then `identify` (parameters with uncertainty).
