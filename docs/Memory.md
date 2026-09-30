@@ -29,7 +29,7 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
   https://claude.ai/code/artifact/deb247ab-a97f-462c-91f5-814deac16edc (2026-09-30).
 - **Housekeeping 2026-09-30:** all agent worktrees and `flutter-lab-exp` removed; branches
   `worktree-agent-a20cf8ee09288bbd4` and `worktree-agent-a689a0e68a75a3835` kept (unmerged WIP drafts, superseded by
-  commit 1c59694). `physics-advisor` pushed to GitHub (no PR opened yet).
+  commit 1c59694). `physics-advisor` pushed to GitHub as **PR #9** (supersedes PR #8, closed 2026-09-30).
 
 ## 2. Current state of each part
 
