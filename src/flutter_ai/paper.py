@@ -415,8 +415,8 @@ def _later_findings(phys: dict | None, guard: dict | None, expl: dict | None, re
                    f"{100 * pool['oracle']['survival']:.0f} % for the oracle.")
     if expl and expl["summary"]["faithfulness_rate"] is not None:
         s_ = expl["summary"]
-        out.append(f"Off the control path, the same language model's explanations of these decisions passed a "
-                   f"faithfulness check in {100 * s_['faithfulness_rate']:.0f} % of its valid answers.")
+        out.append(f"Off the control path, the same language model's explanations of a physics-informed supervisor's "
+                   f"decisions passed a faithfulness check in {100 * s_['faithfulness_rate']:.0f} % of its valid answers.")
     if rev:
         s_ = rev["summary"]
         acc = sum(c["accepted"] for c in s_["gate"])

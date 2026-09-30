@@ -24,6 +24,12 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
   Python 3.14, torch 2.14 CPU. The CLI and tests use that interpreter.
 - **Read next:** `Rules.md` (integrity rules), then `Phases.md` Phase 4.
 - **Owner's learning path:** `Study-Guide.md` (8 tracks mapped to the code, exercises, 16-week plan).
+- **Complete project guide** (theory, every component, what makes the software special, results traced to files,
+  novelty and limits, talk outline, demo script, reviewer Q&A): Claude Doc
+  https://claude.ai/code/artifact/deb247ab-a97f-462c-91f5-814deac16edc (2026-09-30).
+- **Housekeeping 2026-09-30:** all agent worktrees and `flutter-lab-exp` removed; branches
+  `worktree-agent-a20cf8ee09288bbd4` and `worktree-agent-a689a0e68a75a3835` kept (unmerged WIP drafts, superseded by
+  commit 1c59694). `physics-advisor` pushed to GitHub (no PR opened yet).
 
 ## 2. Current state of each part
 
@@ -265,8 +271,10 @@ rules+physics_v2 vs rules+physics (v1), pooled: survived only with v2 7, only wi
 ### Pre-registered physics test (uav_flap, fresh seeds 100-119)
 
 Supervisors, seeds and the code were fixed before the run (`research/physics-advisor-plan.md` Next 2; snapshot
-3a9d325 in `C:\Users\lio48\dev\flutter-lab-exp`, run one fault per process by `run_pieces.py` after the first attempt
-was killed by a low-memory reaper; pieces merged with the snapshot's `_save`). LLM `llama3.1:8b`, answers applied after a
+commit 3a9d325, checked out as a worktree that was removed after the run (recreate with
+`git worktree add ../flutter-lab-exp 3a9d325`), run one fault per process by
+`docs/research/runs/run_pieces_physics_test100.py` after the first attempt was killed by a low-memory reaper; pieces
+merged with the snapshot's `_save`; its first-attempt log is `outputs/uav_flap/physics_test100_pieces_log_first_attempts.txt`). LLM `llama3.1:8b`, answers applied after a
 fixed latency (the median of the main benchmark), so the result does not depend on machine load. Files:
 `outputs/uav_flap/ft_benchmark_physics_test100.json` (+ the seven `_<fault>` pieces), fig12_fault_tolerance_physics_test100.
 Cells: survival · mean time slowed over surviving flights (s). † held out.
@@ -454,7 +462,7 @@ Faults the rejected answers named: servo_slew 4, none 1.
 | 2026-09-29 | **Learned fault diagnoser** (`fault_tolerance/diagnoser*.py`, `train-diagnoser` / `eval-diagnoser`, `models/diagnoser_uav_flap.npz` + `.json`, results `outputs/uav_flap/diagnoser_eval.json`, fig14): physics features per 2.5 s window -> encoder -> multi-label head for the 4 known faults + decoder; unknown-fault score = reconstruction error (fixed before evaluation; Mahalanobis only secondary); thresholds from validation flights; loop timing not an input; loop_delay / flap_effectiveness never in training or calibration; `CompositeFault` for 2-3 simultaneous faults; seeds 10000+ / 20000+ / 30000-32055 | Owner: the LLM is too slow and passive to supervise; a fast learned model should analyse the data and an LLM only explain it (`format_diagnosis` report block). Features, not raw signals: the fault signatures are known physics and the model stays tiny (NumPy, sub-millisecond). Weak spots are in the JSON and `research/physics-advisor-plan.md`: slow servo (latent until it limits the flap), false servo alarms in `safe`-mode flights, flap damage rarely flagged as unknown |
 | 2026-09-30 | **Estimator v2** (`margin.estimate_v2`, `FTPhysicsRuleSupervisorV2`, `ft_simulate(margin_version=2)`, `margin-eval`); v1 `estimate`, `FTPhysicsRuleSupervisor` and the `mode_matrices` defaults unchanged. Authority = 3σ flap command/rate (Lyapunov, AR(1) gust + sensor noise) / limit, required only where the identified wing needs control; turbulence and noise from the residual's gust component and a 4th-difference noise level, calibrated on take-off; measured per-sample loop delay in the fit and `mode_matrices(delay=d)`; robust = worst case over the 95 % confidence ellipse (Gauss-Newton covariance inflated to contain a HAC sandwich, plus the calibration's uncertainty); supervisor falls back to point-estimate admissibility when nothing is robustly admissible (`strict` variant without it); flap factor bounds 0.05-2 in v2. Developed on seeds 1000-1004 only | v1 cannot see saturation (flap damage), delay, turbulence or noise. Details and limits: `research/physics-advisor-plan.md` Step 2; results only in `outputs/uav_flap/margin_eval.json`. v1's flap floor 0.3 on a raw healthy fit of ~0.75 capped the identifiable damage at about −60 %; the current airspeed is left out of a mode's transit because it cannot tell apart modes sharing a controller; the ellipse (not a box) keeps the correlation of the two factors; the strict 95 % region after stiffness loss certified no mode at all |
 
-| 2026-09-30 | **Pre-registered physics test run one fault per process** (`flutter-lab-exp/run_pieces.py`, copy kept in `docs/research/runs/run_pieces_physics_test100.py`; snapshot 3a9d325, seeds 100-119, `--llm-latency` = the main benchmark's median); a piece with any LLM fallback would be retried once (none had any) | The first single-process attempt was killed after the `none` fault by a low-memory reaper, and the PC froze once with several experiments running side by side; the pieces use the same function and arguments, only the process boundary differs |
+| 2026-09-30 | **Pre-registered physics test run one fault per process** (`docs/research/runs/run_pieces_physics_test100.py`, run from a worktree of snapshot 3a9d325 that was removed afterwards, seeds 100-119, `--llm-latency` = the main benchmark's median); a piece with any LLM fallback would be retried once (none had any) | The first single-process attempt was killed after the `none` fault by a low-memory reaper, and the PC froze once with several experiments running side by side; the pieces use the same function and arguments, only the process boundary differs |
 | 2026-09-30 | **Guardian design frozen after the dev run** (seeds 1000-1009; its two dev misses have known causes: latent slow servo, physics v2 soft-wing bias); final test **once** on seeds 300-319 with none, rules, rules+physics, rules+physics_v2, guardian; **no LLM in the guardian test** | Rules §1: evaluate once on fresh seeds. The LLM-vs-rules comparison is already replicated on two test sets (0-19, 100-119); adding it would have cost ~1 h of LLM time for no new question |
 | 2026-09-30 | Experiments run **one LLM job at a time**; Ollama restarted between the benchmark and the LLM studies | The llama-server working set grew from ~1.4 to ~4.9 GB (model file mapped as it is used) and free RAM dipped to ~0.2 GB with Chrome/VS Code open; queued LLM calls would also hit the 30 s timeout |
 | 2026-09-30 | `plots.ft_figure` draws **every** supervisor in the file (it drew only none/random/rules/llm/oracle, so guardian and the physics supervisors were missing); legend moved above the axes; new supervisor colours from existing palette slots, validated (Design.md) | The Guardian figure did not show the guardian. The main fig12 (seeds 0-19) is unchanged until it is regenerated |
@@ -527,7 +535,10 @@ Faults the rejected answers named: servo_slew 4, none 1.
    than the current title ("On-board language-model supervision ..."). The title and contributions list in `paper.py`
    are the owner's call.
 2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
-   local model) to show the result is not specific to one model.
+   local model) to show the result is not specific to one model. Before claiming the Guardian's novelty, search
+   fault detection and isolation (FDI) and flutter-margin monitoring literature (`related-work.md` §7).
+   For live demos, the Guardian view (`/guardian`) offers none / rules / rules + physics only; adding the `guardian`
+   supervisor there is a small change (needs the diagnoser in the recording path).
 3. Qualitative analysis of the LLM's reasoning (RQ4) from `ft_benchmark.json` → `decisions`.
 4. Improve BACT accuracy (compressibility; second flutter point) and use TM-107734 for tunnel turbulence.
 5. Measured time histories from a rig, then `identify` (parameters with uncertainty).
