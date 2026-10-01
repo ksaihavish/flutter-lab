@@ -5,6 +5,11 @@ result in the paper, and change any part of it yourself.*
 
 Last updated: 2026-09-29
 
+> **This file is the roadmap** (what to study, outside resources, exercises, self-checks, a 16-week plan).
+> **The lessons that teach every topic** from first principles, with this project's numbers, are in the course
+> *Flutter Lab: The Course* (Claude Doc, 2026-10-01): https://claude.ai/code/artifact/3e3770fd-cff5-4e44-9659-3f16cf23ba0b
+> It also adds Track 9 (fault tolerance, identification, uncertainty, the Guardian), which this file predates.
+
 ---
 
 ## 0. How to use this guide

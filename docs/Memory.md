@@ -27,6 +27,9 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
 - **Complete project guide** (theory, every component, what makes the software special, results traced to files,
   novelty and limits, talk outline, demo script, reviewer Q&A): Claude Doc
   https://claude.ai/code/artifact/deb247ab-a97f-462c-91f5-814deac16edc (2026-09-30).
+- **The course** (lessons teaching every topic in Study-Guide.md's tracks, plus Track 9 on fault tolerance; each lesson:
+  idea, maths, where it is in the code with real numbers, a check question with answer): Claude Doc
+  https://claude.ai/code/artifact/3e3770fd-cff5-4e44-9659-3f16cf23ba0b (2026-10-01).
 - **Housekeeping 2026-09-30:** all agent worktrees and `flutter-lab-exp` removed; branches
   `worktree-agent-a20cf8ee09288bbd4` and `worktree-agent-a689a0e68a75a3835` kept (unmerged WIP drafts, superseded by
   commit 1c59694). `physics-advisor` pushed to GitHub as **PR #9** (supersedes PR #8, closed 2026-09-30).
