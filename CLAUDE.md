@@ -10,7 +10,7 @@ Reference: `docs/PRD.md` (what and why), `docs/Architecture.md` (how), `docs/Des
 
 ## Commands
 ```
-python -m pytest                                    # 179 tests (~2 min), must pass before committing
+python -m pytest                                    # 180 tests (~2 min), must pass before committing
 python -m flutter_ai analyze  --preset uav_flap     # flutter speed + p-k validation + V-g figure
 python -m flutter_ai evaluate --preset uav_flap     # benchmark -> outputs/uav_flap/results.json + figures
 python -m flutter_ai train    --preset uav_flap     # retrain neural policy (needs torch, ~5 min)
@@ -18,7 +18,7 @@ python -m flutter_ai validate                       # BACT wind-tunnel compariso
 python -m flutter_ai tune|robustness|ablations      # fair baselines, robustness, ablations (--preset uav_flap)
 python -m flutter_ai llm-benchmark|ft-benchmark     # LLM supervisor studies (slow; local Ollama by default)
 python -m flutter_ai ft-stability                   # dwell-time stability bound for supervisor switching
-python -m flutter_ai paper [--pdf]                  # regenerate docs/research/paper-draft.md (+ PDF via local Chrome/Edge)
+python -m flutter_ai paper [--pdf] [--ieee]         # regenerate the draft (+ PDF via Chrome/Edge; + IEEE LaTeX/Overleaf zip/PDF)
 python -m flutter_ai check-data data/<folder>       # validate a dataset, predicted vs measured flutter
 python -m flutter_ai serve                          # web app at http://127.0.0.1:8000 (API docs at /docs)
 ```

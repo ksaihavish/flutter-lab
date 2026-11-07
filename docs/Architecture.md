@@ -127,7 +127,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | API | FastAPI + Pydantic v2 + Uvicorn | Typed validation; docs at `/docs` |
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
-| Tests | pytest + FastAPI TestClient | 179 tests |
+| Tests | pytest + FastAPI TestClient | 180 tests |
 | Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
 | Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 

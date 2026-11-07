@@ -24,3 +24,8 @@ Thumbs.db
 
 # Built paper (python -m flutter_ai paper --pdf); too large for git, rebuild locally
 docs/research/paper-draft.pdf
+
+# IEEE LaTeX export (python -m flutter_ai paper --ieee); rebuild locally
+docs/research/ieee/
+docs/research/paper-ieee-overleaf.zip
+docs/research/paper-ieee.pdf

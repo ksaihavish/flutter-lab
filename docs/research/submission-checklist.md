@@ -31,7 +31,11 @@
       write the closing sentence of §10 (marked *[Owner: ...]*).
 - [ ] Abstract: re-read once §7.5 is filled (it updates automatically).
 - [x] Readable PDF for advisor review: `python -m flutter_ai paper --pdf` → `paper-draft.pdf` (local build, gitignored).
-- [ ] Convert to the venue template (the Markdown draft maps directly to LaTeX sections; `references.bib` is BibTeX).
+- [x] IEEE conference LaTeX: `python -m flutter_ai paper --ieee` → `ieee/paper.tex`, `paper-ieee-overleaf.zip` (upload
+      to Overleaf) and `paper-ieee.pdf` (13 pages; local builds, gitignored). Another venue's template = change the
+      preamble in `src/flutter_ai/paper_latex.py`.
+- [ ] **Cut to the venue's page limit** (IEEE conferences: usually 6-8 pages; the export is 13) and replace the
+      author placeholders.
 
 ## Evidence already in place
 

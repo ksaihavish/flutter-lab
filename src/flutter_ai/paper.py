@@ -103,8 +103,9 @@ def _bib(path: Path) -> dict[str, dict[str, str]]:
 class Refs:
     """Collects citations in order of first use and renders author-year text."""
 
-    def __init__(self, bib: dict[str, dict[str, str]]):
+    def __init__(self, bib: dict[str, dict[str, str]], marker: bool = False):
         self.bib = bib
+        self.marker = marker  # True: emit ⟦cite:k1,k2⟧ placeholders for the LaTeX export (paper_latex.py)
         self.used: list[str] = []
         base = {k: self._base(e) for k, e in bib.items()}
         self.label = dict(base)
@@ -126,6 +127,8 @@ class Refs:
         for k in keys:
             if k not in self.used:
                 self.used.append(k)
+        if self.marker:
+            return "⟦cite:" + ",".join(keys) + "⟧"
         return "(" + "; ".join(self.label[k] for k in keys) + ")"
 
     @staticmethod
@@ -467,7 +470,7 @@ def _conclusion(r: dict | None, llm: dict | None, ft: dict | None, stab: dict | 
 
 
 # ------------------------------------------------------------------------------------------------ the draft
-def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
+def build(out_path: Path | None = None, copy_figures: bool = True, cite_markers: bool = False) -> Path:
     out_path = Path(out_path or RESEARCH / "paper-draft.md")
     res = {p: _load(OUTPUTS_DIR / p / "results.json") for p in PRESET_ORDER}
     rob = {p: _load(OUTPUTS_DIR / p / "robustness.json") for p in PRESET_ORDER}
@@ -481,7 +484,7 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
     expl = _load(OUTPUTS_DIR / "uav_flap" / "explainer_eval.json")
     rev = _load(OUTPUTS_DIR / "uav_flap" / "review_loop.json")
     bact = _load(OUTPUTS_DIR / "validation" / "bact.json")
-    cite = Refs(_bib(RESEARCH / "references.bib"))
+    cite = Refs(_bib(RESEARCH / "references.bib"), marker=cite_markers)
     p = PRESETS["uav_flap"]
     rate = math.degrees(p.u_rate_max[0]) if p.u_rate_max else float("nan")
     L: list[str] = []

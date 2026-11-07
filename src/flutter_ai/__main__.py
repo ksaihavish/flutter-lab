@@ -239,6 +239,13 @@ def _paper(args) -> None:
         from .paper_render import render_pdf
 
         print(f"Saved {render_pdf(path)}")
+    if args.ieee:
+        from .paper_latex import compile_ieee, export_ieee
+
+        tex = export_ieee()
+        print(f"Saved {tex} and {tex.parent.parent / 'paper-ieee-overleaf.zip'} (upload the zip to Overleaf)")
+        pdf = compile_ieee(tex)
+        print(f"Saved {pdf}" if pdf else "Tectonic not found: compile the zip on Overleaf (pdfLaTeX + BibTeX).")
 
 
 def _all(args) -> None:
@@ -327,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.set_defaults(fn=_identify)
     sp = sub.add_parser("paper", help="generate docs/research/paper-draft.md from the result files")
     sp.add_argument("--pdf", action="store_true", help="also print paper-draft.pdf with a local Chrome/Edge")
+    sp.add_argument("--ieee", action="store_true", help="also export IEEEtran LaTeX + an Overleaf zip (docs/research/ieee)")
     sp.set_defaults(fn=_paper)
     sp = add("all", _all, "analyze + train (if needed) + evaluate")
     sp.add_argument("--seeds", type=int, default=20)
