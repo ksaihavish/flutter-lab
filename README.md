@@ -35,7 +35,7 @@ python -m flutter_ai serve
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
 | `http://127.0.0.1:8000/guardian` (same server) | Guardian live view: inject a mid-flight fault, fly it with no supervisor / rules / rules + physics / the Guardian (learned diagnosis + physics, the best supervisor in the study), and play back the damaged wing, the on-board flutter-margin estimate (with the true value as a simulation-only toggle), per-mode predicted stability, the supervisor's report and every decision |
-| `start.bat -Test` / `python -m pytest` | 178 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `start.bat -Test` / `python -m pytest` | 179 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark (20 seeds, paired statistics) → `outputs/uav_flap/results.json` + figures (~2 min) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU); `--variant` trains ablations |
@@ -48,7 +48,7 @@ python -m flutter_ai serve
 | `python -m flutter_ai validate` | Compare the model with NASA's BACT wind-tunnel flutter measurements → `outputs/validation/bact.json` |
 | `python -m flutter_ai check-data data/<folder>` | Validate an experimental dataset and compare predicted vs measured flutter speed ([data/README.md](data/README.md)) |
 | `python -m flutter_ai identify data/<folder>` | Identify physical parameters (frequencies, damping, ...) from a dataset's time histories |
-| `python -m flutter_ai paper` | Regenerate `docs/research/paper-draft.md` from the result files (no hand-typed numbers) |
+| `python -m flutter_ai paper [--pdf]` | Regenerate `docs/research/paper-draft.md` from the result files (no hand-typed numbers); `--pdf` also prints `paper-draft.pdf` with a local Chrome/Edge |
 
 Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, from published data), `uav_section` (2-DOF),
 `hodges_pierce` (textbook validation case).

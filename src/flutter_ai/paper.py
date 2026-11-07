@@ -36,6 +36,8 @@ SCEN_LABEL = {"turbulence_patch": "Turbulence, 1.1 U_F", "discrete_gust": "Discr
 CTRL_LABEL = {"open_loop": "Open loop", "lqr": "LQR", "lqg": "LQG", "neural": "Neural",
               "lqr+rules": "LQR + rules", "neural+rules": "Neural + rules"}
 RESEARCH = PROJECT_ROOT / "docs" / "research"
+TITLE = ("Fast models decide, the language model explains: fault-tolerant supervision for active flutter "
+         "suppression with a fair benchmark and a dwell-time guarantee")
 FIGURES = [  # (preset, file, caption)
     ("uav_flap", "fig1_flutter_vg.png", "Damping and frequency of the structural modes vs airspeed (default wing, open "
      "loop). Flutter where a mode's damping crosses zero."),
@@ -451,13 +453,16 @@ def _conclusion(r: dict | None, llm: dict | None, ft: dict | None, stab: dict | 
                          f"rules ({100 * llm_s:.0f} % vs {100 * rules_s:.0f} % of faulty flights survived), and both "
                          f"stayed below an oracle that knows the fault ({100 * pooled['supervisors']['oracle']['survival']:.0f} %).")
     if stab:
-        parts.append(f"Because the LLM only selects among modes that are each stable, and controller switches are spaced "
+        parts.append(f"Because every supervisor only selects among modes that are each stable, and controller switches are spaced "
                      f"by at least the computed dwell time ({stab['max_dwell_s']:.1f} s), no sequence of its answers can "
                      "destabilise the nominal closed loop in the small-signal sense (faults, actuator limits and airspeed "
                      "transitions are outside this guarantee); its value depends on the diagnostics it is given and on "
                      "the time scale of the decision.")
     parts.extend(later or [])
-    parts.append("*[Owner: add one closing sentence on what this means for practice and the next step.]*")
+    parts.append("*[Owner: closing sentence in your words. Suggestion: on-board supervision of a fast, unstable plant "
+                 "should be built from fast models whose decisions can be verified, with the language model kept off "
+                 "the control path where its explanations help the operator; the next step is a wind-tunnel test on "
+                 "measured data.]*")
     return " ".join(parts)
 
 
@@ -482,8 +487,7 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
     L: list[str] = []
     w = L.append
 
-    w("# On-board language-model supervision for active flutter suppression: a fair benchmark with fault "
-      "tolerance and a dwell-time guarantee\n")
+    w(f"# {TITLE}\n")
     w(f"*Draft generated {datetime.now(timezone.utc).isoformat(timespec='minutes')} by `python -m flutter_ai paper` "
       f"(flutter_ai {__version__}, commit {_git_commit()}). Numbers and comparisons are computed from the result "
       "files; edit the prose in `src/flutter_ai/paper.py`, never the numbers here. Author list, affiliations and "
@@ -492,9 +496,10 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
     # ------------------------------------------------------------ abstract
     w("## Abstract\n")
     r = res["uav_flap"]
-    abstract = ("Language models are increasingly proposed as supervisors of control systems, but their latency and "
-                "reliability sit uneasily with fast, safety-critical loops. We study this tension on active flutter "
-                "suppression. A validated typical-section model with a servo-driven trailing-edge flap, a realistic "
+    abstract = ("When a fault develops in flight, a flutter-suppressed wing needs a supervisor that picks a safe "
+                "response in time and cannot itself destabilise the loop. Language models are increasingly proposed "
+                "for this supervisory role; we test that proposal on active flutter suppression and compare it with a "
+                "supervisor built from fast learned and physics models. A validated typical-section model with a servo-driven trailing-edge flap, a realistic "
                 f"actuator slew-rate limit ({rate:.0f} °/s) and a {1000 * 0.005:.0f} ms loop delay is controlled by "
                 "LQR, a turbulence-aware LQG and a neural policy trained through differentiable simulation, all "
                 "minimising the same cost, with the classical designs tuned for the actual actuator on data disjoint "
@@ -512,18 +517,26 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
         abstract += (f" A local 8-billion-parameter model supervising controller aggressiveness answers in "
                      f"{llm['summary']['latency_s']['median']:.1f} s (median), far slower than the gusts it would have "
                      f"to react to, {effect}.")
+    if stab:
+        abstract += (f" Supervisors choose only among pre-verified modes, and switching between the inner-loop "
+                     f"controllers is provably stable (small-signal, nominal wing) when switches are at least "
+                     f"{stab['max_dwell_s']:.1f} s apart on average, a condition the architecture enforces.")
     if ft:
         pooled = ft["pooled_faulty"]["supervisors"]
-        abstract += (" Moved to a slower task, fault-tolerant supervision with pre-verified modes, the flights "
-                     "survived under six mid-flight faults were: " + ", ".join(
-                         f"{s} {100 * v['survival']:.0f} %" for s, v in pooled.items()) + ".")
-    if stab:
-        abstract += (f" Switching between the inner-loop controllers is provably stable (small-signal, nominal wing) "
-                     f"when switches are at least {stab['max_dwell_s']:.1f} s apart on average, a condition the "
-                     "architecture enforces.")
+        if "llm" in pooled and "rules" in pooled:
+            pair = ft["pooled_faulty"]["paired"].get("llm vs rules", {})
+            p_txt = f", exact McNemar {_p(pair['mcnemar_p'])}" if "mcnemar_p" in pair else ""
+            abstract += (f" Under six slowly developing mid-flight faults, the on-board LLM kept "
+                         f"{100 * pooled['llm']['survival']:.0f} % of faulty flights from flutter against "
+                         f"{100 * pooled['rules']['survival']:.0f} % for hand-written rules{p_txt}; no supervision kept "
+                         f"{100 * pooled['none']['survival']:.0f} % and an oracle that knows the fault "
+                         f"{100 * pooled['oracle']['survival']:.0f} %.")
     later = _later_findings(phys, guard, expl, rev)
     if later:
         abstract += " " + " ".join(later)
+    if guard and ft:
+        abstract += (" The evidence supports a division of labour: fast, verifiable models make the decision, and "
+                     "the language model explains it.")
     w(abstract + "\n")
 
     # ------------------------------------------------------------ introduction
@@ -541,16 +554,23 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
       "stability proofs as the field's central open problem and notes that stability across LLM-triggered mode "
       "switches is largely unanalysed. We found no evaluation of an LLM supervisor for flutter suppression, and none that "
       "runs the model on board with its measured latency against rule-based and oracle supervisors, including "
-      "faults the rules were not written for.\n")
+      "faults the rules were not written for. We therefore ask two questions: can an on-board LLM choose among "
+      "pre-verified modes better than simple rules when faults develop in flight, and if not, what should make that "
+      "choice?\n")
     w("**Contributions.** (i) An open, validated flutter-suppression benchmark with realistic actuation and fair "
-      "baselines (one shared cost; classical designs tuned for the real actuator). (ii) A controlled comparison of "
-      "LQR, LQG and a differentiable-simulation neural policy, with robustness studies and ablations. (iii) A "
-      "supervisory architecture for an on-board LLM above a fast, open-loop-unstable plant, building on dwell-time "
-      f"switching among pre-verified controllers {cite('papacharalampopoulos2026')}: a bounded mode set, a controller "
-      "bank with bumpless transfer, one question at a time with measured latency, and a discrete-time dwell-time bound "
-      "computed for the implemented controllers. "
-      "(iv) An evaluation of an on-board LLM supervisor for fault-tolerant flutter suppression against no, random, "
-      "rule-based and oracle supervision. (v) Negative results reported as such.\n")
+      "baselines (one shared cost; classical designs tuned for the real actuator), with a controlled comparison of "
+      "LQR, LQG and a differentiable-simulation neural policy, robustness studies and ablations. (ii) A supervisory "
+      "architecture above a fast, open-loop-unstable plant, building on dwell-time switching among pre-verified "
+      f"controllers {cite('papacharalampopoulos2026')}: a bounded mode set, a controller bank with bumpless transfer "
+      "and a discrete-time dwell-time bound computed for the implemented controllers, which holds whatever the "
+      "supervisor (rules, LLM or learned) answers. (iii) An evaluation of an on-board LLM as the decision-maker, with "
+      "its measured latency, against no, random, rule-based and oracle supervision on two disjoint test sets, with and "
+      "without an on-board flutter-margin estimate (the latter pre-registered). (iv) A guardian supervisor built from "
+      "a learned fault diagnoser with an unknown-fault score and a physics-based admissibility check (flutter margin "
+      "and control authority), designed on development seeds and tested once on fresh seeds, including two faults "
+      "held out of its design. (v) The LLM in roles off the control path: explaining decisions, checked for "
+      "faithfulness, and proposing post-flight model updates behind a verification gate. Negative results are "
+      "reported as such.\n")
 
     # ------------------------------------------------------------ related work
     w("## 2. Related work\n")
@@ -576,6 +596,10 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
       f"{cite('hespanha1999')} (stated in continuous time; Section 5 gives the discrete-time counterpart we use); "
       f"LQG designs have no guaranteed robustness margins {cite('doyle1978')}, which our "
       "robustness results illustrate.\n")
+    w("*Fault diagnosis and flutter-margin monitoring.* The guardian combines model-based fault detection and "
+      "isolation with an on-line flutter-margin estimate; both are established fields, and we claim only the "
+      "combination and its evaluation as a mode supervisor here. *[Owner: cite the fault detection and isolation "
+      "and flight-test flutter-margin monitoring literature before submission (related-work.md §7).]*\n")
 
     # ------------------------------------------------------------ model
     w("## 3. Model and validation\n")
@@ -631,9 +655,9 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
 
     # ------------------------------------------------------------ supervision
     w("## 5. Supervisory architecture\n")
-    w("Every few seconds the supervisor receives a plain-language status report built only from on-board "
-      "information and returns one mode name from a fixed enum; it never outputs gains, forces or speeds. The "
-      "answer is constrained by a JSON schema, validated again, and replaced by the rule-based decision on any "
+    w("Every few seconds a supervisor (rules, the LLM or the guardian of Section 7.7) returns one mode name from a "
+      "fixed enum, using only on-board information; it never outputs gains, forces or speeds. The LLM receives a "
+      "plain-language status report; its answer is constrained by a JSON schema, validated again, and replaced by the rule-based decision on any "
       f"failure (timeout, invalid answer, refusal, call budget). The model runs locally (Ollama, {_llm_model(ft, llm)}) "
       "so it works without a data link; a cloud model can be selected instead. The supervisor is asked one "
       "question at a time and its measured latency is applied in simulation time. All candidate controllers run "
@@ -896,8 +920,10 @@ def build(out_path: Path | None = None, copy_figures: bool = True) -> Path:
       "verified in advance.")
     for line in _ft_discussion(ft) + _later_discussion(phys, guard):
         w(line)
-    w("- **Safety by construction.** The bounded mode set, schema-constrained answers, rule fallback, one question "
-      "at a time and the dwell-time bound make the LLM's worst case analysable, independent of its reasoning.\n")
+    w("- **Safety by construction.** The bounded mode set, the dwell-time bound and, for the LLM, schema-constrained "
+      "answers, rule fallback and one question at a time make every supervisor's worst case analysable, independent "
+      "of how it reasons. What the supervisor adds is the choice among safe modes, and fast models made that choice "
+      "better than the language model did.\n")
     w("## 9. Limitations\n")
     w("- Linear typical section (no freeplay or limit cycles); incompressible strip-theory aerodynamics (BACT runs "
       "at Mach 0.77); simulation only; no measured time histories (the identification pipeline is tested on "

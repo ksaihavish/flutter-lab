@@ -20,14 +20,17 @@
 
 ## Writing still to do (after the fault-tolerant results)
 
-- [ ] **Decide the framing and title.** The draft is still titled "On-board language-model supervision ...". The
-      results now say: the LLM loses to simple rules as a decision-maker (twice), giving it physics makes it worse, and a
-      fast learned + physics supervisor (the guardian) comes close to the oracle, while the LLM is useful for explaining
-      decisions. The title, abstract opening and contributions list are prose in `src/flutter_ai/paper.py`.
+- [x] **Decide the framing and title** (owner, 2026-11-07: Guardian-first). Title "Fast models decide, the language
+      model explains: ..." (`paper.TITLE`); abstract opening, research questions and contributions rewritten around the
+      guardian, with the LLM-as-decision-maker results as the motivating negative result.
+- [ ] **Trim the abstract** to the venue's word limit (it is ~370 words; most venues allow 150-250).
+- [ ] Cite fault detection and isolation and flutter-margin monitoring work in §2 (placeholder marked *[Owner: ...]*;
+      `related-work.md` §7) before claiming anything about the guardian beyond its evaluation.
 
 - [ ] §8 Discussion and §10 Conclusion are generated from the results (data-driven bullets): edit the wording and
       write the closing sentence of §10 (marked *[Owner: ...]*).
 - [ ] Abstract: re-read once §7.5 is filled (it updates automatically).
+- [x] Readable PDF for advisor review: `python -m flutter_ai paper --pdf` → `paper-draft.pdf` (local build, gitignored).
 - [ ] Convert to the venue template (the Markdown draft maps directly to LaTeX sections; `references.bib` is BibTeX).
 
 ## Evidence already in place

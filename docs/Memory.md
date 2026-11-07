@@ -3,7 +3,7 @@
 *The project's running state, so a new chat or AI tool can continue without re-reading the
 whole codebase. **Update this file at the end of every working session.***
 
-Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator) + physics advisor, pre-registered physics test, Guardian supervisor (final test done), LLM explainer / post-flight reviewer; **experiments finished; next = the owner's paper items** (`research/submission-checklist.md`)
+Last updated: **2026-11-07** · Version **0.3.0** · Phase: 4 done (fair baselines, realistic actuator, robustness, ablations, LLM benchmark, identification, fault-tolerant supervision, paper generator) + physics advisor, pre-registered physics test, Guardian supervisor (final test done), LLM explainer / post-flight reviewer; **experiments finished; paper reframed Guardian-first and builds to PDF; next = the owner's paper items** (`research/submission-checklist.md`)
 
 ---
 
@@ -16,7 +16,7 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
 - **Validated rig:** `bact` preset = NASA BACT wind-tunnel model (TP-1998-206270). `python -m flutter_ai validate`.
 - **Default preset:** `uav_flap`: 3-DOF, 0.3 m chord, 20 %-chord flap, 30 Hz servo (damping 0.56), ±15° command,
   545 °/s slew-rate limit, 1-step (5 ms) loop delay; benchmark disturbances ×0.33.
-- **Run:** `start.bat` (web app) · `python -m pytest` (178 tests, ~2 min) ·
+- **Run:** `start.bat` (web app) · `python -m pytest` (179 tests, ~2 min) ·
   `python -m flutter_ai evaluate --preset uav_flap` (20 seeds, ~2 min).
 - **Location:** `C:\Users\lio48\dev\flutter-lab` (moved out of OneDrive on 2026-09-29; the old OneDrive copy was
   deleted; a zip backup of the *original* project remains in `OneDrive\Desktop\RESEARCH PAPER PROJECT BACKUP`).
@@ -48,7 +48,7 @@ Last updated: **2026-09-30 (evening)** · Version **0.3.0** · Phase: 4 done (fa
 | Physics-informed advisor | ✅ 2026-09-30 | `research/physics-advisor-plan.md`: `fault_tolerance/margin.py` (v1 flutter-margin estimator: pitch stiffness + flap effectiveness, flutter speed, per-mode predicted stability; `tests/test_margin.py`). **v2** (authority, turbulence/noise, measured delay, robust margins; `rules+physics_v2`; `margin-eval` on dev seeds → `margin_eval.json`, fig15; `tests/test_margin_v2.py`). **Pre-registered test done** (seeds 100-119, snapshot 3a9d325; §4) |
 | Guardian supervisor | ✅ 2026-09-30 | `GuardianSupervisor` (learned diagnosis + physics v2 admissibility + symptom-rule fallback, no LLM). Dev `guardian_dev1000`, **final test once on seeds 300-319** (`ft_benchmark_guardian_test300.json`, fig12_..._guardian_test300); §4 |
 | LLM off the control path | ✅ built 2026-09-30 | Explainer (`explainer-eval` → `explainer_eval.json`) and post-flight reviewer + verification gate (`review-loop` → `review_loop.json`, fig17); §4 |
-| Paper prep | ✅ 2026-09-30 | `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5-§7.8 (FT study, pre-registered physics test, Guardian, LLM explainer/reviewer), the abstract's and conclusion's later sentences, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
+| Paper prep | ✅ 2026-11-07 | **Guardian-first framing** (title in `paper.TITLE`: "Fast models decide, the language model explains: ..."; abstract, research questions, contributions, §5 opening, safety bullet and conclusion rewritten; FDI/flutter-margin-monitoring citation placeholder in §2; suggested closing sentence in §10). `paper --pdf` prints `paper-draft.pdf` via headless Chrome/Edge (`paper_render.py`, stdlib Markdown → HTML; gitignored, ~2.5 MB). Earlier: `python -m flutter_ai paper` → `research/paper-draft.md` (full draft; numbers and comparisons computed; figures copied to `research/figures/`); `research/references.bib` (read status per entry); `paper-outline.md`, `submission-checklist.md`; PRD research questions with status. §7.5-§7.8 (FT study, pre-registered physics test, Guardian, LLM explainer/reviewer), the abstract's and conclusion's later sentences, §8 and §10 generated from the results; the owner edits the wording and writes the closing sentence |
 | LLM supervisor | ✅ two backends, one safety wrapper | `FLUTTER_AI_LLM_BACKEND=ollama` (default, local `llama3.1:8b`) or `claude`. Local tested live (§6); Claude only with mocks |
 | Benchmark + figures | ✅ | `outputs/<preset>/results.json`, fig1–fig9. 20 seeds; deterministic gusts randomised per seed; cost `J`; paired Wilcoxon + bootstrap CIs |
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics / **guardian** (default since 2026-09-30: estimator v2 + diagnoser, same flight as ft-benchmark, per-mode admitted/vetoed from its physics verdict); no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
@@ -469,6 +469,7 @@ Faults the rejected answers named: servo_slew 4, none 1.
 | 2026-09-30 | **Guardian design frozen after the dev run** (seeds 1000-1009; its two dev misses have known causes: latent slow servo, physics v2 soft-wing bias); final test **once** on seeds 300-319 with none, rules, rules+physics, rules+physics_v2, guardian; **no LLM in the guardian test** | Rules §1: evaluate once on fresh seeds. The LLM-vs-rules comparison is already replicated on two test sets (0-19, 100-119); adding it would have cost ~1 h of LLM time for no new question |
 | 2026-09-30 | Experiments run **one LLM job at a time**; Ollama restarted between the benchmark and the LLM studies | The llama-server working set grew from ~1.4 to ~4.9 GB (model file mapped as it is used) and free RAM dipped to ~0.2 GB with Chrome/VS Code open; queued LLM calls would also hit the 30 s timeout |
 | 2026-09-30 | `plots.ft_figure` draws **every** supervisor in the file (it drew only none/random/rules/llm/oracle, so guardian and the physics supervisors were missing); legend moved above the axes; new supervisor colours from existing palette slots, validated (Design.md) | The Guardian figure did not show the guardian. The main fig12 (seeds 0-19) is unchanged until it is regenerated |
+| 2026-11-07 | **Paper framed Guardian-first** (owner's choice); PDF built by a headless browser, not LaTeX; PDF gitignored | Evidence: guardian 93 % vs rules 51 % on fresh seeds, LLM below rules twice, physics hurt the LLM. No LaTeX/pandoc on the machine and the venue (template) is undecided; the 2.5 MB PDF exceeds the 500 KB large-file hook and would bloat history on every rebuild |
 | 2026-09-30 | Paper generator: §7.6-7.8, abstract/conclusion sentences and discussion bullets for the new studies, computed from the result files (`_ft_supervisor_table`, `_pair_sentence`, `_acted`, `_verdict`, `_later_findings`, `_later_discussion`); fixed a missing f-string that printed `{cite('doyle1978')}` literally | Rules §1: no hand-typed numbers in the draft |
 
 ## 6. Known issues and limitations (be honest about these in the paper)
@@ -533,12 +534,10 @@ Faults the rejected answers named: servo_slew 4, none 1.
 
 ## 7. Next steps (in order)
 
-1. The owner's items in `research/submission-checklist.md`: advisor review, venue, author list, library copies of
-   the four paywalled papers, read Papacharalampopoulos et al. 2026, edit the generated prose and write the closing
-   sentence of §10. **Decide the paper's framing**: the evidence now supports "fast learned + physics models decide,
-   the LLM explains" (Guardian 93 % vs rules 51 % on fresh seeds; LLM below rules twice; physics hurt the LLM) more
-   than the current title ("On-board language-model supervision ..."). The title and contributions list in `paper.py`
-   are the owner's call.
+1. The owner's items in `research/submission-checklist.md`: advisor review (send `paper-draft.pdf`), venue, author
+   list, library copies of the four paywalled papers, read Papacharalampopoulos et al. 2026, FDI / flutter-margin
+   monitoring citations for §2, trim the abstract (~370 words) to the venue limit, edit the generated prose and write
+   the closing sentence of §10 (a suggestion is in the draft). Framing decided 2026-11-07 (Guardian-first).
 2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
    local model) to show the result is not specific to one model. Before claiming the Guardian's novelty, search
    fault detection and isolation (FDI) and flutter-margin monitoring literature (`related-work.md` §7).

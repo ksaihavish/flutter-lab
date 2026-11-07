@@ -92,6 +92,18 @@ def test_paper_draft_is_generated_from_result_files(tmp_path):
     assert "(Hespanha & Morse 1999)" in text or "ft_stability" not in text  # citations render as author-year
 
 
+def test_paper_markdown_renders_to_html(tmp_path):
+    from flutter_ai.paper_render import markdown_to_html
+
+    md = ("# T & a\n\n*note*\n\n## 1. S\n\nText with **bold**, `code` and 5 < 6.\n\n- a\n  - b\n- c\n\n"
+          "| x | y |\n|---|---|\n| 1 | 2 |\n\n![Figure 1](missing.png)\n")
+    page = markdown_to_html(md, tmp_path)
+    assert "<h1>T &amp; a</h1>" in page and "<em>note</em>" in page and "<h2>1. S</h2>" in page
+    assert "<strong>bold</strong>" in page and "<code>code</code>" in page and "5 &lt; 6" in page
+    assert page.count("<ul>") == 2 and page.count("</ul>") == 2
+    assert "<th>x</th>" in page and "<td>2</td>" in page and '<img src="missing.png"' in page
+
+
 def test_fault_tolerance_discussion_is_computed_from_results():
     from flutter_ai.paper import _conclusion, _ft_discussion
 

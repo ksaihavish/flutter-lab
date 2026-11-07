@@ -233,7 +233,12 @@ def _identify(args) -> None:
 def _paper(args) -> None:
     from .paper import build
 
-    print(f"Saved {build()}")
+    path = build()
+    print(f"Saved {path}")
+    if args.pdf:
+        from .paper_render import render_pdf
+
+        print(f"Saved {render_pdf(path)}")
 
 
 def _all(args) -> None:
@@ -321,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--delay", type=int, default=1, help="loop delay (samples) between recorded command and actuator")
     sp.set_defaults(fn=_identify)
     sp = sub.add_parser("paper", help="generate docs/research/paper-draft.md from the result files")
+    sp.add_argument("--pdf", action="store_true", help="also print paper-draft.pdf with a local Chrome/Edge")
     sp.set_defaults(fn=_paper)
     sp = add("all", _all, "analyze + train (if needed) + evaluate")
     sp.add_argument("--seeds", type=int, default=20)
