@@ -33,7 +33,8 @@ def theodorsen_jones(k: float | np.ndarray) -> complex | np.ndarray:
     """C(k) implied by the Jones Wagner approximation (used by the state-space model)."""
     k = np.asarray(k, dtype=float)
     c = PHI0 + sum(p * e / (1j * k + e) for p, e in zip(JONES_PSI, JONES_EPS))
-    return c.item() if np.ndim(c) == 0 else c
+    c = np.asarray(c)
+    return c.item() if c.ndim == 0 else c
 
 
 def theodorsen_T(c: float, a: float) -> dict[int, float]:

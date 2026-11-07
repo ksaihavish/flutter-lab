@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from .modes import MODE_ORDER, Decision, make_decision
 from .report import SituationFeatures
 
@@ -38,3 +40,20 @@ class RuleSupervisor:
         if mode != current:
             self._last_change = f.time
         return make_decision(f.time, mode, why, source=self.name)
+
+
+class RandomSupervisor:
+    """Ablation baseline: a uniformly random mode at every tick (seeded, so runs are reproducible)."""
+
+    name = "random"
+
+    def __init__(self, seed: int = 0):
+        self.seed = seed
+        self.reset()
+
+    def reset(self) -> None:
+        self._rng = np.random.default_rng(self.seed)
+
+    def decide(self, f: SituationFeatures) -> Decision:
+        mode = MODE_ORDER[int(self._rng.integers(len(MODE_ORDER)))]
+        return make_decision(f.time, mode, "Random mode (ablation baseline).", source=self.name)

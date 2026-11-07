@@ -48,7 +48,9 @@ DEFAULT_SCENARIO = "turbulence_patch"
 # Disturbance size relative to the standard scenarios (initial condition and gust amplitude).
 # BACT: a heavy wind-tunnel rig in a low-turbulence tunnel with a small flap (30 % span, +/-12 deg);
 # its linear LQR is stable to ~1.16 U_F, but the standard 2 deg / 10 mm start exceeds the flap's authority.
-DISTURBANCE_SCALE: dict[str, float] = {"bact": 0.25}
+# uav_flap: with a realistic servo slew rate (~545 deg/s) no controller survives the full-size disturbances
+# (they need >2000 deg/s); x0.33 is the largest tested scale at which a classical controller survives every scenario.
+DISTURBANCE_SCALE: dict[str, float] = {"bact": 0.25, "uav_flap": 0.33}
 
 
 def scenarios_for(preset: str) -> dict[str, dict]:
@@ -61,7 +63,9 @@ def scenarios_for(preset: str) -> dict[str, dict]:
         sc = spec["scenario"]
         scaled = replace(sc, h0=sc.h0 * s, alpha0_deg=sc.alpha0_deg * s,
                          gust=replace(sc.gust, amplitude=sc.gust.amplitude * s))
-        out[name] = {"description": spec["description"] + f" (Disturbances scaled x{s} for this rig.)",
+        kind = "RMS" if sc.gust.kind == "turbulence" else "peak"
+        out[name] = {"description": spec["description"] + f" (Disturbances scaled x{s} for this rig: "
+                     f"{scaled.gust.amplitude:.3g} m/s {kind} here.)",
                      "scenario": scaled}
     return out
 

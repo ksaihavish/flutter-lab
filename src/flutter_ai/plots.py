@@ -20,6 +20,7 @@ from .paths import MODELS_DIR  # noqa: E402
 CASE_COLORS = {
     "open_loop": "#898781",
     "lqr": "#2a78d6",
+    "lqg": "#4a3aa7",
     "neural": "#eb6834",
     "lqr+rules": "#1baf7a",
     "neural+rules": "#eda100",
@@ -29,11 +30,12 @@ CASE_COLORS = {
 CASE_LABELS = {
     "open_loop": "Open loop",
     "lqr": "LQR",
+    "lqg": "LQG (turbulence model)",
     "neural": "Neural",
     "lqr+rules": "LQR + rule supervisor",
     "neural+rules": "Neural + rule supervisor",
-    "lqr+llm": "LQR + Claude supervisor",
-    "neural+llm": "Neural + Claude supervisor",
+    "lqr+llm": "LQR + LLM supervisor",
+    "neural+llm": "Neural + LLM supervisor",
 }
 MODE_COLORS = ("#4a3aa7", "#008300", "#52514e")  # structural modes: kept distinct from controller colours
 INK, INK2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
@@ -133,7 +135,7 @@ def time_history_figure(results, p, title: str, path: Path) -> Path:
 
 def tradeoff_figure(tradeoff: dict, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
-    for ctrl in [c for c in ("lqr", "neural") if c in tradeoff]:
+    for ctrl in [c for c in ("lqr", "lqg", "neural") if c in tradeoff]:
         pts = tradeoff[ctrl]
         e = [q["control_energy"] for q in pts]
         r = [q["rms_h_mm"] for q in pts]
@@ -156,8 +158,8 @@ def tradeoff_figure(tradeoff: dict, path: Path) -> Path:
 def velocity_sweep_figure(sweep: dict, p, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4))
     lim = p.h_limit * 1000
-    for ctrl in ("open_loop", "lqr", "neural"):
-        rows = sweep.get(ctrl, [])
+    for ctrl in [c for c in ("open_loop", "lqr", "lqg", "neural") if c in sweep]:
+        rows = sweep[ctrl]
         r = np.array([q["ratio"] for q in rows])
         pk = np.array([min(q["peak_h_mm"], lim) for q in rows])
         fail = np.array([q["exceeded_limits"] for q in rows])
@@ -202,10 +204,12 @@ def delay_sweep_figure(sweep: dict, path: Path) -> Path:
     fig, ax = plt.subplots(figsize=(6.5, 4))
     dt_ms = sweep["dt"] * 1000
     labels = {"lqr": "LQR re-designed for the true delay (optimistic)", "lqr_nominal": "LQR designed for 5 ms, fixed",
+              "lqg": "LQG re-designed for the true delay (optimistic)", "lqg_nominal": "LQG designed for 5 ms, fixed",
               "neural": "Neural (one policy)"}
-    styles = {"lqr": dict(color=CASE_COLORS["lqr"], alpha=0.45), "lqr_nominal": dict(color=CASE_COLORS["lqr"]),
+    styles: dict[str, dict] = {"lqr": dict(color=CASE_COLORS["lqr"], alpha=0.45), "lqr_nominal": dict(color=CASE_COLORS["lqr"]),
+              "lqg": dict(color=CASE_COLORS["lqg"], alpha=0.45), "lqg_nominal": dict(color=CASE_COLORS["lqg"]),
               "neural": dict(color=CASE_COLORS["neural"])}
-    for ctrl in [c for c in ("lqr", "lqr_nominal", "neural") if c in sweep]:
+    for ctrl in [c for c in ("lqr", "lqr_nominal", "lqg", "lqg_nominal", "neural") if c in sweep]:
         rows = sweep[ctrl]
         d = np.array([r["delay_steps"] for r in rows]) * dt_ms
         rms = np.array([r["rms_h_mm"] for r in rows])
@@ -241,3 +245,237 @@ def make_all(p, fa, Uf_pk, examples: dict, results: dict, out_dir: Path) -> list
     if tf:
         figs.append(tf)
     return figs
+
+
+def robustness_figure(res: dict, path: Path) -> Path:
+    """Failure rate and cost of the surviving runs vs model error, sensor noise and actuator rate limit."""
+    ctrls = res["controllers"]
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    levels = [100 * lv for lv in res["levels"]]
+    par = res["parameters"]["turbulence_patch"]
+    rows = [par[f"{lv:.2f}"] for lv in res["levels"]]
+    for c in ctrls:
+        color = CASE_COLORS.get(c, INK2)
+        axes[0, 0].plot(levels, [100 * r[c]["failure_rate"] for r in rows], color=color, marker="o", ms=4,
+                        label=CASE_LABELS.get(c, c))
+        j = [r[c]["cost_J"]["median"] if r[c]["cost_J"] else np.nan for r in rows]
+        axes[0, 1].plot(levels, j, color=color, marker="o", ms=4)
+    axes[0, 0].set_xlabel("Model error: mass, stiffness, damping, servo (± %)")
+    axes[0, 0].set_ylabel("Failed runs (%)")
+    axes[0, 0].set_title("Turbulence at 1.1 × nominal flutter speed")
+    axes[0, 1].set_xlabel("Model error (± %)")
+    axes[0, 1].set_ylabel("Cost J of surviving runs (median)")
+    axes[0, 1].set_title("Lower is better")
+
+    noise = res["sensor_noise"]
+    nx = [100 * float(k) for k in noise]
+    for c in ctrls:
+        j = [noise[k][c]["cost_J"]["median"] if noise[k][c]["cost_J"] else np.nan for k in noise]
+        axes[1, 0].plot(nx, j, color=CASE_COLORS.get(c, INK2), marker="o", ms=4)
+    axes[1, 0].set_xlabel("Sensor noise (% of reference scale)")
+    axes[1, 0].set_ylabel("Cost J of surviving runs (median)")
+    axes[1, 0].set_title("Sensor noise (turbulence)")
+
+    rate = res.get("rate_limit") or {}
+    if rate:
+        keys = list(rate)
+        labels = ["none" if k == "none" else f"{k}°/s" for k in keys]
+        x = np.arange(len(keys))
+        for c in ctrls:
+            axes[1, 1].plot(x, [100 * rate[k][c]["failure_rate"] for k in keys], color=CASE_COLORS.get(c, INK2),
+                            marker="o", ms=4)
+        axes[1, 1].set_xticks(x, labels)
+        axes[1, 1].set_xlabel("Flap slew-rate limit (unknown to the designs)")
+        axes[1, 1].set_ylabel("Failed runs (%)")
+        axes[1, 1].set_title("Actuator rate limit (turbulence)")
+    else:
+        axes[1, 1].axis("off")
+    axes[0, 0].legend(loc="upper left")
+    fig.suptitle(f"Robustness: controllers designed for the nominal wing ({res['metadata']['draws']} draws per point)")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+
+def envelope_figure(res: dict, path: Path) -> Path:
+    """Survival vs airspeed per controller (real servo solid, slew limit removed dashed), the linear loop's growth
+    rate, and how often the commanded flap rate exceeds the real servo's limit (envelope.py)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ctrls, ratios, uf = res["controllers"], res["ratios"], res["flutter_speed"]
+    band = res.get("neural_training_range")
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
+    titles = {"turbulence_patch": "Turbulence patch", "discrete_gust": "Discrete (1 - cos) gust"}
+    for ax, (sc, by_servo) in zip(axes[0], res["scenarios"].items()):
+        for c in ctrls:
+            for sv, style in (("actual", "-"), ("unlimited", "--")):
+                rows = by_servo.get(sv, {}).get(c)
+                if rows:
+                    ax.plot([r["ratio"] for r in rows], [100 * (1 - r["failures"] / r["n"]) for r in rows], style,
+                            color=CASE_COLORS.get(c, INK2), marker="o" if sv == "actual" else None, ms=4,
+                            label=CASE_LABELS.get(c, c) if sv == "actual" else None)
+        ax.set_ylim(-4, 104)
+        ax.set_ylabel(f"Flights within limits (%, {len(res['metadata']['seeds'])} seeds)")
+        ax.set_title(titles.get(sc, sc))
+    lim = res.get("servo_rate_limit_deg_s")
+    axes[0, 0].plot([], [], "-", color=INK2, label=f"servo {lim[0]:.0f}°/s" if lim else "actuator as designed")
+    axes[0, 0].plot([], [], "--", color=INK2, label="slew limit removed")
+    axes[0, 0].legend(loc="lower left")
+
+    ss = res["small_signal"]
+    ax = axes[1, 0]
+    for c in ["open_loop", *ctrls]:
+        ys = [ss[f"{r:.2f}"].get(c, {}).get("growth_per_s", np.nan) for r in ratios]
+        ax.plot(ratios, ys, color=CASE_COLORS.get(c, INK2), marker="o", ms=4, label=CASE_LABELS.get(c, c),
+                lw=1.2 if c == "open_loop" else 1.6)
+    ax.axhline(0.0, color=AXIS, lw=1.0)
+    ax.set_ylabel("Growth rate of the slowest-decaying mode (1/s)")
+    ax.set_title("Linear loop (no saturation): above 0 = unstable")
+    ax.legend(loc="upper left")
+
+    ax = axes[1, 1]
+    turb = res["scenarios"].get("turbulence_patch", {}).get("unlimited", {})
+    for c in ctrls:
+        rows = turb.get(c) or []
+        ax.plot([r["ratio"] for r in rows], [100 * (r["rate_above_limit"] or 0.0) for r in rows],
+                color=CASE_COLORS.get(c, INK2), marker="o", ms=4)
+    ax.set_ylabel("Commanded flap rate above the servo limit (% of steps)")
+    ax.set_title("Turbulence, slew limit removed: rate the servo would need")
+    for ax in axes.flat:
+        if band:
+            ax.axvspan(band[0], band[1], color=GRID, alpha=0.45, lw=0, zorder=0)
+        ax.axvline(1.0, color=MUTED, lw=0.8, ls=":")
+    for ax in axes[1]:
+        ax.set_xlabel(f"Airspeed / flutter speed (U_F = {uf:.1f} m/s)")
+    if band:
+        axes[0, 1].text(band[0] + 0.01, 2, "neural training range", color=INK2, fontsize=7.5, va="bottom")
+    fig.suptitle(f"Operating envelope, {res['preset']}: controllers gain-scheduled at the flown airspeed")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def review_figure(res: dict, path: Path) -> Path:
+    """The verification gate per candidate (fault_tolerance/review.py): regression on v1's eval split and whether the
+    candidate explains the anomalous flights, against the thresholds fixed in advance."""
+    from .fault_tolerance.diagnoser_eval import FAULT_COLORS
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cands, gate = res["candidates"], res["metadata"]["gate"]
+    # one short item per line: on one line the labels of neighbouring candidates ran into each other
+    labels = ["\n".join(("LLM" if c["source"] == "llm" else "forced wrong", c["anomaly_kind"],
+                         f"-> {c['hypothesis']['kind']}", "ACCEPT" if c["gate"]["accepted"] else "REJECT"))
+              for c in cands]
+    x = np.arange(len(cands))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
+    ax = axes[0, 0]
+    v1f = res["v1_regression"]["f1"]
+    for k, cls in enumerate(v1f):
+        d = [(c["regression"]["f1"][cls] or 0.0) - (v1f[cls] or 0.0) for c in cands]
+        ax.plot(x + (k - 1.5) * 0.08, d, "o", ms=6, color=FAULT_COLORS.get(cls, INK2), label=cls)
+    ax.axhline(0.0, color=AXIS, lw=1.0)
+    ax.axhline(-gate["f1_tolerance"], color=CRITICAL, lw=1.0, ls="--")
+    ax.set_ylabel("Window F1 change vs v1 (eval split)")
+    ax.set_title("No regression: every v1 class above the dashed line")
+    ax.legend(loc="upper left", ncol=2)  # regressions sit near the dashed line at the bottom
+    ax = axes[0, 1]
+    fa0 = res["v1_regression"]["healthy_any_alarm_rate"] or 0.0
+    ax.bar(x, [100 * (c["regression"]["healthy_any_alarm_rate"] or 0.0) for c in cands], width=0.5, color=INK2)
+    ax.axhline(100 * fa0, color=MUTED, lw=1.2, label="v1")
+    ax.axhline(100 * (fa0 + gate["false_alarm_tolerance"]), color=CRITICAL, lw=1.0, ls="--", label="v1 + tolerance")
+    ax.set_ylabel("Healthy eval flights with any alarm (%)")
+    ax.set_title("False alarms")
+    ax.legend(loc="upper left")
+    for ax, key, thr, title, below in ((axes[1, 0], "class_share", gate["explain_class_min"],
+                                        "Anomaly explained: hypothesised class confirmed", False),
+                                       (axes[1, 1], "unknown_share", gate["explain_unknown_max"],
+                                        "Anomaly explained: unknown alarm gone", True)):
+        ax.bar(x - 0.15, [100 * c["explanation_v1"][key] for c in cands], width=0.3, color=MUTED, label="v1")
+        ax.bar(x + 0.15, [100 * c["explanation"][key] for c in cands], width=0.3, color=INK2, label="candidate")
+        ax.axhline(100 * thr, color=CRITICAL, lw=1.0, ls="--", label=("at most" if below else "at least") + " (gate)")
+        ax.set_ylim(0, 105)
+        ax.set_ylabel("Anomalous windows after v1's first unknown alarm (%)")
+        ax.set_title(title)
+        ax.legend(loc="upper right")
+    for ax in axes[1]:
+        ax.set_xticks(x, labels, fontsize=7.5)
+    fig.suptitle(f"Post-flight review loop: LLM hypotheses and forced-wrong controls through the verification gate "
+                 f"({res['metadata']['model']})")
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+def llm_figure(res: dict, tradeoff: dict | None, path: Path) -> Path:
+    """LLM latency, and where supervised runs land relative to the fixed-aggressiveness trade-off curves."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.2))
+    lat = [d["latency_s"] for d in res["decisions"] if d["source"] == "llm"]
+    ax1.hist(lat, bins=20, color=CASE_COLORS["neural+llm"], edgecolor="white")
+    ax1.axvline(0.25, color=INK2, lw=0.8)
+    ax1.annotate("supervisor interval 0.25 s", (0.25, 0.95), xycoords=("data", "axes fraction"), fontsize=7.5,
+                 color=INK2, xytext=(4, 0), textcoords="offset points", va="top")
+    ax1.set_xlabel("Answer latency (s)")
+    ax1.set_ylabel("Decisions")
+    ax1.set_title(f"{res['metadata']['model']} ({res['metadata']['backend']}): latency per decision")
+
+    seed0 = res["scenarios"]["turbulence_patch"]["seed0"]
+    for ctrl in ("neural", "lqg"):
+        if tradeoff and ctrl in tradeoff:
+            pts = tradeoff[ctrl]
+            ax2.plot([q["control_energy"] for q in pts], [q["rms_h_mm"] for q in pts], color=CASE_COLORS[ctrl],
+                     marker="o", ms=3, lw=1.2, label=f"{CASE_LABELS[ctrl]}, fixed aggressiveness 0→1")
+        for sup, marker in (("rules", "D"), ("random", "s"), ("llm", "*")):
+            m = seed0.get(f"{ctrl}+{sup}")
+            if m and not m["exceeded_limits"]:
+                ax2.plot(m["control_energy"], m["rms_h_mm"], marker=marker, ms=10 if marker == "*" else 7,
+                         color=CASE_COLORS[ctrl], mec="white", mew=1.2, linestyle="none",
+                         label=f"{CASE_LABELS[ctrl]} + {sup} supervisor")
+    ax2.set_xlabel("Actuator effort  ∫ Σ(u/u_max)² dt  (s)")
+    ax2.set_ylabel("RMS plunge (mm)")
+    ax2.set_title("Turbulence: a supervisor adds value only below its curve")
+    ax2.legend(loc="best", fontsize=7, framealpha=0.9)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+FT_SUP_COLORS = {"rules": "#1baf7a", "rules+physics": "#eda100", "rules+physics_v2": "#e34948", "llm": "#e87ba4",
+                 "llm+physics": "#4a3aa7", "guardian": "#2a78d6", "random": "#c3c2b7", "none": "#898781",
+                 "oracle": "#0b0b0b"}
+# Bar order = dict order: supervisors, then the references (none, oracle) on the right. Validated (dataviz checker,
+# adjacent pairs of each result file's subset): CVD dE >= 9.1 and normal-vision dE >= 17.8 for the physics and guardian
+# studies; the main study's rules/llm pair is 6.1 (deutan), legal with the legend and the paper's tables.
+
+
+def ft_figure(res: dict, path: Path) -> Path:
+    """Survival and mission cost (time slowed down) per fault and supervisor (every supervisor in the file)."""
+    faults = list(res["faults"])
+    present = res["faults"][faults[0]]["supervisors"]
+    sups = [s for s in FT_SUP_COLORS if s in present] + [s for s in present if s not in FT_SUP_COLORS]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True)
+    x = np.arange(len(faults))
+    w = 0.8 / len(sups)
+    for i, s in enumerate(sups):
+        surv = [100 * res["faults"][f]["supervisors"][s]["survival"] for f in faults]
+        slow = [np.nan if (v := res["faults"][f]["supervisors"][s]["slowed_s_mean"]) is None else v
+                for f in faults]  # surviving flights only; no bar if none survived
+        ax1.bar(x + (i - (len(sups) - 1) / 2) * w, surv, w * 0.9, color=FT_SUP_COLORS.get(s, INK2), label=s)
+        ax2.bar(x + (i - (len(sups) - 1) / 2) * w, slow, w * 0.9, color=FT_SUP_COLORS.get(s, INK2))
+    labels = [f + ("\n(held out)" if res["faults"][f]["held_out"] else "") for f in faults]
+    ax2.set_xticks(x, labels, fontsize=8)
+    ax1.set_ylabel("Flights survived (%)")
+    ax2.set_ylabel("Time slowed down (s)\n(surviving flights)")
+    fig.suptitle("Fault-tolerant supervision: survival (higher is better) and mission cost (lower is better)",
+                 fontweight="bold", x=0.01, ha="left")
+    # above the axes: inside them it covered the bars
+    fig.legend(*ax1.get_legend_handles_labels(), ncol=len(sups), loc="upper left", bbox_to_anchor=(0.01, 0.955),
+               fontsize=8, frameon=False)
+    fig.tight_layout(rect=(0, 0, 1, 0.935))
+    fig.savefig(path)
+    plt.close(fig)
+    return path

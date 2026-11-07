@@ -21,3 +21,6 @@ legacy/outputs/training_data.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Built paper (python -m flutter_ai paper --pdf); too large for git, rebuild locally
+docs/research/paper-draft.pdf

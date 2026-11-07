@@ -1,0 +1,203 @@
+{
+  "metadata": {
+    "version": "0.3.0",
+    "generated_at": "2026-09-29T07:23:35+00:00",
+    "tuning_seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009
+    ],
+    "note": "Produced by flutter_ai.tuning; see its docstring."
+  },
+  "params_fingerprint": "{\"a\": -0.3, \"actuation\": \"force_moment\", \"alpha_limit_deg\": 20.0, \"b\": 0.15, \"f_alpha\": 16.0, \"f_beta\": 0.0, \"f_h\": 8.0, \"flap_hinge\": null, \"h_limit\": 0.1, \"mass\": 5.0, \"name\": \"uav_section\", \"r_alpha_sq\": 0.25, \"r_beta_sq\": 0.0, \"rho\": 1.225, \"u_max\": [60.0, 6.0], \"x_alpha\": 0.2, \"x_beta\": 0.0, \"zeta_alpha\": 0.01, \"zeta_beta\": 0.0, \"zeta_h\": 0.01}",
+  "lqr": {
+    "rate_multiplier": 1.0
+  },
+  "lqg": {
+    "rate_multiplier": 1.0,
+    "measurement_noise": 0.001
+  },
+  "grid": {
+    "lqr": [
+      {
+        "rate_multiplier": 1.0,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 7.959495494093678
+      },
+      {
+        "rate_multiplier": 3.0,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 9.16950888402027
+      },
+      {
+        "rate_multiplier": 10.0,
+        "failures": 10,
+        "episodes": 40,
+        "mean_J": 10.968102988548454
+      },
+      {
+        "rate_multiplier": 30.0,
+        "failures": 13,
+        "episodes": 40,
+        "mean_J": 11.25785067914594
+      },
+      {
+        "rate_multiplier": 100.0,
+        "failures": 15,
+        "episodes": 40,
+        "mean_J": 12.074269051241597
+      }
+    ],
+    "lqg": [
+      {
+        "rate_multiplier": 1.0,
+        "measurement_noise": 0.001,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.228232894730376
+      },
+      {
+        "rate_multiplier": 1.0,
+        "measurement_noise": 0.01,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.261300372851732
+      },
+      {
+        "rate_multiplier": 1.0,
+        "measurement_noise": 0.03,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.285360747738815
+      },
+      {
+        "rate_multiplier": 1.0,
+        "measurement_noise": 0.1,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.442491036849129
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.001,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.2894228287767824
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.01,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.3329111278852173
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.03,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.389496358689025
+      },
+      {
+        "rate_multiplier": 3.0,
+        "measurement_noise": 0.1,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.6428124296856947
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.001,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.594098388056808
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.01,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.6494216466016725
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.03,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 2.7395335834271997
+      },
+      {
+        "rate_multiplier": 10.0,
+        "measurement_noise": 0.1,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 3.1040040897189534
+      },
+      {
+        "rate_multiplier": 30.0,
+        "measurement_noise": 0.001,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 3.252122913162291
+      },
+      {
+        "rate_multiplier": 30.0,
+        "measurement_noise": 0.01,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 3.3166177331558258
+      },
+      {
+        "rate_multiplier": 30.0,
+        "measurement_noise": 0.03,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 3.4417162756812147
+      },
+      {
+        "rate_multiplier": 30.0,
+        "measurement_noise": 0.1,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 3.9351482075242514
+      },
+      {
+        "rate_multiplier": 100.0,
+        "measurement_noise": 0.001,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 4.640375614201924
+      },
+      {
+        "rate_multiplier": 100.0,
+        "measurement_noise": 0.01,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 4.710961756278013
+      },
+      {
+        "rate_multiplier": 100.0,
+        "measurement_noise": 0.03,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 4.8867377951633815
+      },
+      {
+        "rate_multiplier": 100.0,
+        "measurement_noise": 0.1,
+        "failures": 0,
+        "episodes": 40,
+        "mean_J": 5.596214539898169
+      }
+    ]
+  }
+}

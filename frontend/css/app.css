@@ -17,10 +17,13 @@
   /* controller identity (validated: CVD dE >= 9.1 adjacent, light) */
   --c-open_loop: #898781;
   --c-lqr: #2a78d6;
+  --c-lqg: #4a3aa7;
   --c-neural: #eb6834;
   --c-lqr-rules: #1baf7a;
   --c-neural-rules: #eda100;
   --c-llm: #e87ba4;
+  /* Guardian view only: the on-board flutter-speed estimate (slot 3 aqua; validated all-pairs with LQG + neural) */
+  --c-estimate: #1baf7a;
   /* structural modes (flutter chart) */
   --c-mode1: #4a3aa7;
   --c-mode2: #008300;
@@ -55,10 +58,12 @@
     --border: rgba(255, 255, 255, 0.10);
     --shadow: none;
     --c-lqr: #3987e5;
+    --c-lqg: #9085e9;
     --c-neural: #d95926;
     --c-lqr-rules: #199e70;
     --c-neural-rules: #c98500;
     --c-llm: #d55181;
+    --c-estimate: #199e70;
     --c-mode1: #9085e9;
     --c-mode2: #008300;
     --c-mode3: #c3c2b7;
@@ -84,10 +89,12 @@
   --border: rgba(255, 255, 255, 0.10);
   --shadow: none;
   --c-lqr: #3987e5;
+  --c-lqg: #9085e9;
   --c-neural: #d95926;
   --c-lqr-rules: #199e70;
   --c-neural-rules: #c98500;
   --c-llm: #d55181;
+  --c-estimate: #199e70;
   --c-mode1: #9085e9;
   --c-mode2: #008300;
   --c-mode3: #c3c2b7;
@@ -128,6 +135,15 @@ h3 { font-size: 13px; color: var(--ink); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-mark { width: 28px; height: 28px; fill: var(--c-lqr); flex: none; }
 .subtitle { margin: 0; color: var(--ink-2); font-size: 12px; }
+/* page switcher (Simulator | Guardian) */
+.topnav { display: flex; gap: 4px; }
+.topnav a {
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border);
+  color: var(--ink); text-decoration: none; font-size: 12px; white-space: nowrap;
+}
+.topnav a:hover { background: var(--surface-2); }
+.topnav a[aria-current="page"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.topnav a:focus-visible { outline: 2px solid var(--c-lqr); outline-offset: 2px; }
 .status-row { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -216,6 +232,13 @@ input[type="range"] { width: 100%; accent-color: var(--ink); }
   background: transparent; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer;
 }
 .ghost-btn:hover { background: var(--surface-2); }
+.ghost-btn:disabled { opacity: 0.6; cursor: progress; }
+.seeds-btn { padding: 8px 14px; font-size: 13px; }
+.table-note { margin-top: 8px; }
+.speed-warning { color: var(--critical); }
+.survival-bar { display: inline-block; width: 80px; height: 8px; border-radius: 4px; background: var(--grid);
+  vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.survival-bar span { display: block; height: 100%; background: var(--ink-2); }
 
 /* ---- cards -------------------------------------------------------------- */
 .card {

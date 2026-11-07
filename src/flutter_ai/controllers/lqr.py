@@ -8,7 +8,7 @@ from scipy.linalg import solve_discrete_are
 from ..model import discrete_state_space
 from ..params import WingParams
 from .base import Controller
-from .costs import input_weight, state_weight
+from .costs import input_weight, rate_weight, state_weight
 
 
 def delay_augmented(Ad: np.ndarray, Bd: np.ndarray, delay: int) -> tuple[np.ndarray, np.ndarray]:
@@ -30,20 +30,49 @@ def delay_augmented(Ad: np.ndarray, Bd: np.ndarray, delay: int) -> tuple[np.ndar
     return A, B
 
 
-def lqr_gain(p: WingParams, U: float, dt: float, aggressiveness: float = 0.5, delay: int = 0) -> np.ndarray:
+def rate_augmented(A: np.ndarray, B: np.ndarray, delay: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Like delay_augmented, but the state always carries u_{k-1} (needed for a rate penalty), also without delay:
+    state [x, u_{k-1}, ..., u_{k-D}], D = max(delay, 1), plant driven by u_{k-delay}.
+    """
+    if delay >= 1:
+        return delay_augmented(A, B, delay)
+    n, m = B.shape
+    Aa = np.zeros((n + m, n + m))
+    Aa[:n, :n] = A
+    return Aa, np.vstack([B, np.eye(m)])
+
+
+def dlqr_with_rate(A: np.ndarray, B: np.ndarray, Q: np.ndarray, R: np.ndarray, W: np.ndarray,
+                   delay: int) -> np.ndarray:
+    """
+    Discrete LQR for x_{k+1} = A x_k + B u_{k-delay} with the cost
+    sum x'Qx + u'Ru + (u_k - u_{k-1})' W (u_k - u_{k-1}); the rate term becomes a cross term with the
+    u_{k-1} state. Returns K for u_k = -K [x_k, u_{k-1}, ..., u_{k-D}].
+    """
+    Aa, Ba = rate_augmented(A, B, delay)
+    n, m = B.shape
+    N = Aa.shape[0]
+    Qa = np.zeros((N, N))
+    Qa[:n, :n] = Q
+    Qa[n:n + m, n:n + m] += W
+    S = np.zeros((N, m))
+    S[n:n + m, :] = -W
+    Ra = R + W
+    P = solve_discrete_are(Aa, Ba, Qa, Ra, s=S)
+    return np.linalg.solve(Ra + Ba.T @ P @ Ba, Ba.T @ P @ Aa + S.T)
+
+
+def lqr_gain(p: WingParams, U: float, dt: float, aggressiveness: float = 0.5, delay: int = 0,
+             rate_multiplier: float = 1.0) -> np.ndarray:
     """
     Discrete-time LQR on the ZOH model at the controller's sample period, designed for
     the given input delay. Returns K for u_k = -K [x_k, u_{k-1}, ..., u_{k-d}].
     (A continuous-time design implemented at 200 Hz chatters at high gain.)
     """
     sys = discrete_state_space(p, U, dt)
-    A, B = delay_augmented(sys.Ad, sys.Bd, delay)
-    Q = np.zeros_like(A)
-    n = sys.Ad.shape[0]
-    Q[:n, :n] = state_weight(p) * dt
-    R = input_weight(p, aggressiveness) * dt
-    P = solve_discrete_are(A, B, Q, R)
-    return np.linalg.solve(R + B.T @ P @ B, B.T @ P @ A)
+    return dlqr_with_rate(sys.Ad, sys.Bd, state_weight(p) * dt, input_weight(p, aggressiveness) * dt,
+                          rate_weight(p) * dt * rate_multiplier, delay)
 
 
 def closed_loop_radius(p: WingParams, U: float, dt: float, K: np.ndarray, actual_delay: int,
@@ -102,19 +131,28 @@ class LQRController(Controller):
 
     design_velocity: airspeed the gain is designed for. None = the actual airspeed (ideal
     gain scheduling). Set it to study robustness to off-design operation.
+    rate_multiplier: design knob (controllers/design.py). None = the tuned value for this wing, if any.
     """
 
     name = "lqr"
     label = "LQR (classical)"
 
-    def __init__(self, design_velocity: float | None = None, design_delay: int | None = None):
+    def __init__(self, design_velocity: float | None = None, design_delay: int | None = None,
+                 rate_multiplier: float | None = None):
         super().__init__()
+        self.rate_multiplier = rate_multiplier
         self.design_velocity = design_velocity
         self.design_delay = design_delay
         self._gains: dict[float, np.ndarray] = {}
 
     def reset(self, params: WingParams, U: float, dt: float, delay: int = 1) -> None:
         super().reset(params, U, dt, delay)
+        from .design import design_settings
+
+        settings, warning = design_settings(params, "lqr")
+        if warning:
+            self.warnings.append(warning)
+        self._rate = self.rate_multiplier if self.rate_multiplier is not None else settings["rate_multiplier"]
         self._gains = {}
 
     def _gain(self) -> np.ndarray:
@@ -122,7 +160,7 @@ class LQRController(Controller):
         if key not in self._gains:
             U = self.design_velocity or self.U
             d = self.delay if self.design_delay is None else self.design_delay
-            self._gains[key] = lqr_gain(self.params, U, self.dt, key, d)
+            self._gains[key] = lqr_gain(self.params, U, self.dt, key, d, self._rate)
         return self._gains[key]
 
     def compute(self, t: float, x_hat: np.ndarray) -> np.ndarray:

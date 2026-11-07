@@ -1,0 +1,254 @@
+% References for the Flutter Lab paper. Compiled 2026-09-29 (see related-work.md); full texts checked and metadata
+% confirmed against Crossref / arXiv on 2026-09-29.
+% Rules.md §1.7: cite only what you have opened. The `readstatus` field says how far each entry was read:
+%   full      = full text read
+%   abstract  = only the abstract was read: read the full paper before citing anything beyond the abstract
+%   NOT-OPENED = must be opened and checked before it is cited
+
+@techreport{theodorsen1935,
+  author     = {Theodorsen, Theodore},
+  title      = {General Theory of Aerodynamic Instability and the Mechanism of Flutter},
+  institution= {NACA},
+  number     = {Report 496},
+  year       = {1935},
+  note       = {Dated 2 May 1934; NACA 20th Annual Report, pp. 413--433; NTRS 19800006788 (1949 reprint 19930090935)},
+  readstatus = {full}
+}
+
+@book{hodges2011,
+  author     = {Hodges, Dewey H. and Pierce, G. Alvin},
+  title      = {Introduction to Structural Dynamics and Aeroelasticity},
+  edition    = {2nd},
+  publisher  = {Cambridge University Press},
+  year       = {2011},
+  readstatus = {NOT-OPENED},
+  note       = {Benchmark reproduced in tests/test_physics.py; owner to confirm the edition used}
+}
+
+@techreport{waszak1998bact,
+  author     = {Waszak, Martin R.},
+  title      = {Modeling the Benchmark Active Control Technology Wind-Tunnel Model for Active Control Design Applications},
+  institution= {NASA Langley Research Center},
+  number     = {NASA/TP-1998-206270},
+  year       = {1998},
+  readstatus = {full}
+}
+
+@techreport{waszak1997sim,
+  author     = {Waszak, Martin R.},
+  title      = {BACT Simulation User Guide (Version 7.0)},
+  institution= {NASA Langley Research Center},
+  number     = {NASA/TM-97-206252},
+  year       = {1997},
+  readstatus = {full}
+}
+
+@inproceedings{mukhopadhyay1999,
+  author     = {Mukhopadhyay, Vivek},
+  title      = {Transonic Flutter Suppression Control Law Design, Analysis and Wind Tunnel Results},
+  booktitle  = {International Forum on Aeroelasticity and Structural Dynamics (IFA)},
+  year       = {1999},
+  note       = {NASA NTRS 19990050943},
+  readstatus = {full}
+}
+
+@article{scott2000,
+  author     = {Scott, Robert C. and Pado, Lawrence E.},
+  title      = {Active Control of Wind-Tunnel Model Aeroelastic Response Using Neural Networks},
+  journal    = {Journal of Guidance, Control, and Dynamics},
+  volume     = {23},
+  number     = {6},
+  pages      = {1100--1108},
+  year       = {2000},
+  doi        = {10.2514/2.4661},
+  note       = {Full text read of the SPIE 3991 (March 2000) paper with the same title and abstract, NTRS 20040086574; the journal version itself not read},
+  readstatus = {full}
+}
+
+@article{bernellizazzera2000,
+  author     = {Bernelli-Zazzera, Franco and Mantegazza, Paolo and Mazzoni, Giovanni and Rendina, Matteo},
+  title      = {Active Flutter Suppression Using Recurrent Neural Networks},
+  journal    = {Journal of Guidance, Control, and Dynamics},
+  volume     = {23},
+  number     = {6},
+  pages      = {1030--1036},
+  year       = {2000},
+  doi        = {10.2514/2.4671},
+  readstatus = {abstract}
+}
+
+@article{mattaboni2009,
+  author     = {Mattaboni, Mattia and Quaranta, Giuseppe and Mantegazza, Paolo},
+  title      = {Active Flutter Suppression for a Three-Surface Transport Aircraft by Recurrent Neural Networks},
+  journal    = {Journal of Guidance, Control, and Dynamics},
+  volume     = {32},
+  number     = {4},
+  pages      = {1295--1307},
+  year       = {2009},
+  doi        = {10.2514/1.40774},
+  readstatus = {abstract}
+}
+
+@article{tang2018,
+  author     = {Tang, Difan and Chen, Lei and Tian, Zhao Feng and Hu, Eric},
+  title      = {Adaptive nonlinear optimal control for active suppression of airfoil flutter via a novel neural-network-based controller},
+  journal    = {Journal of Vibration and Control},
+  volume     = {24},
+  number     = {22},
+  pages      = {5261--5272},
+  year       = {2018},
+  doi        = {10.1177/1077546317750504},
+  readstatus = {abstract}
+}
+
+@article{tang2020,
+  author     = {Tang, Difan and Chen, Lei and Tian, Zhao Feng and Hu, Eric},
+  title      = {A neural network approach for improving airfoil active flutter suppression under control-input constraints},
+  journal    = {Journal of Vibration and Control},
+  volume     = {27},
+  number     = {3--4},
+  pages      = {451--467},
+  year       = {2021},
+  note       = {Published online 28 May 2020},
+  doi        = {10.1177/1077546320929153},
+  readstatus = {abstract}
+}
+
+@article{chen2023rl,
+  author     = {Chen, Zhen and Shi, Zhiwei and Chen, Sinuo and Tong, Shengxiang and Dong, Yizhang},
+  title      = {Active flutter suppression for a flexible wing model with trailing-edge circulation control via reinforcement learning},
+  journal    = {AIP Advances},
+  volume     = {13},
+  number     = {1},
+  pages      = {015317},
+  year       = {2023},
+  doi        = {10.1063/5.0130370},
+  readstatus = {full}
+}
+
+@inproceedings{xu2022shac,
+  author     = {Xu, Jie and Makoviychuk, Viktor and Narang, Yashraj and Ramos, Fabio and Matusik, Wojciech and Garg, Animesh and Macklin, Miles},
+  title      = {Accelerated Policy Learning with Parallel Differentiable Simulation},
+  booktitle  = {International Conference on Learning Representations (ICLR)},
+  year       = {2022},
+  eprint     = {2204.07137},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@inproceedings{heeg2024,
+  author     = {Heeg, Johannes and Song, Yunlong and Scaramuzza, Davide},
+  title      = {Learning Quadrotor Control From Visual Features Using Differentiable Simulation},
+  booktitle  = {IEEE International Conference on Robotics and Automation (ICRA)},
+  year       = {2025},
+  eprint     = {2410.15979},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@misc{du2026survey,
+  author     = {Du, Haiping and Chan, Linping},
+  title      = {Large Language Models in the Loop: A Stability- and Network-Aware Survey in Networked Control, Cyber-Physical, and Multi-Agent Systems},
+  year       = {2026},
+  eprint     = {2609.16599},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@article{papacharalampopoulos2026,
+  author     = {Papacharalampopoulos, Alexios and Karagianni, Olga Maria and Stavropoulos, Panagiotis},
+  title      = {Cognitive Supervisory Control with LLM Reasoning Agent for Fault-Tolerant Process Systems: A Digital Twin Perspective},
+  journal    = {Processes},
+  volume     = {14},
+  number     = {14},
+  pages      = {2298},
+  year       = {2026},
+  doi        = {10.3390/pr14142298},
+  readstatus = {full}
+}
+
+@misc{vyas2026ftc,
+  author     = {Vyas, Javal and Gill, Milapji Singh and Markaj, Artan and Gehlhoff, Felix and Mercang{\"o}z, Mehmet},
+  title      = {From Detection to Action: Using LLM Agents for Fault-Tolerant Control},
+  year       = {2026},
+  eprint     = {2606.28011},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@misc{vyas2026tutorial,
+  author     = {Vyas, Javal and Gill, Milapji Singh and Markaj, Artan and Gehlhoff, Felix and Mercang{\"o}z, Mehmet},
+  title      = {A Tutorial on Autonomous Fault-Tolerant Control Using Knowledge-Grounded LLM Agents},
+  year       = {2026},
+  eprint     = {2606.31635},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@misc{ahn2022saycan,
+  author     = {Ahn, Michael and Brohan, Anthony and Brown, Noah and Chebotar, Yevgen and Cortes, Omar and David, Byron and Finn, Chelsea and Fu, Chuyuan and Gopalakrishnan, Keerthana and Hausman, Karol and Herzog, Alex and Ho, Daniel and Hsu, Jasmine and Ibarz, Julian and Ichter, Brian and Irpan, Alex and Jang, Eric and Jauregui Ruano, Rosario and Jeffrey, Kyle and Jesmonth, Sally and Joshi, Nikhil J. and Julian, Ryan and Kalashnikov, Dmitry and Kuang, Yuheng and Lee, Kuang-Huei and Levine, Sergey and Lu, Yao and Luu, Linda and Parada, Carolina and Pastor, Peter and Quiambao, Jornell and Rao, Kanishka and Rettinghouse, Jarek and Reyes, Diego and Sermanet, Pierre and Sievers, Nicolas and Tan, Clayton and Toshev, Alexander and Vanhoucke, Vincent and Xia, Fei and Xiao, Ted and Xu, Peng and Xu, Sichun and Yan, Mengyuan and Zeng, Andy},
+  title      = {Do As I Can, Not As I Say: Grounding Language in Robotic Affordances},
+  year       = {2022},
+  eprint     = {2204.01691},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@misc{chen2023typefly,
+  author     = {Chen, Guojun and Yu, Xiaojing and Ling, Neiwen and Zhong, Lin},
+  title      = {TypeFly: Flying Drones with Large Language Model},
+  year       = {2023},
+  eprint     = {2312.14950},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@inproceedings{shibu2026skysim,
+  author     = {Shibu, Aditya and Saleh, Marah and Al-Musleh, Mohamed and Abdulaziz, Nidhal},
+  title      = {SkySim: A ROS2-based Simulation Environment for Natural Language Control of Drone Swarms using Large Language Models},
+  booktitle  = {2nd International Conference on Drones and Unmanned Systems (DAUS 2026)},
+  year       = {2026},
+  eprint     = {2602.01226},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@misc{shou2026pid,
+  author     = {Shou, Zhoupeng and Hong, Xiaodong and Ren, Congjing and Wang, Jingdai and Yang, Yongrong and Liao, Zuwei},
+  title      = {A Physics-Informed Framework for PID Tuning of Chemical Processes Using Large Language Model Agents},
+  year       = {2026},
+  eprint     = {2607.26594},
+  archiveprefix = {arXiv},
+  readstatus = {full}
+}
+
+@inproceedings{hespanha1999,
+  author     = {Hespanha, Jo{\~a}o P. and Morse, A. Stephen},
+  title      = {Stability of switched systems with average dwell-time},
+  booktitle  = {Proceedings of the 38th IEEE Conference on Decision and Control},
+  volume     = {3},
+  pages      = {2655--2660},
+  year       = {1999},
+  doi        = {10.1109/CDC.1999.831330},
+  readstatus = {full}
+}
+
+@article{doyle1978,
+  author     = {Doyle, John C.},
+  title      = {Guaranteed margins for LQG regulators},
+  journal    = {IEEE Transactions on Automatic Control},
+  volume     = {23},
+  number     = {4},
+  pages      = {756--757},
+  year       = {1978},
+  doi        = {10.1109/TAC.1978.1101812},
+  readstatus = {full}
+}
+
+@misc{dsw001a,
+  author     = {{DSpower}},
+  title      = {{DS-W001A} digital servo: specifications (no-load speed $\le$ 0.11 s/60$^\circ$ at 12 V)},
+  howpublished = {Manufacturer web page, accessed 2026-09-29},
+  year       = {2026},
+  readstatus = {full}
+}

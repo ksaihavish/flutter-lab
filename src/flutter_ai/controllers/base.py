@@ -71,6 +71,8 @@ class Controller(ABC):
         self.aggressiveness = float(np.clip(a, 0.0, 1.0))
 
     def __call__(self, t: float, y: np.ndarray) -> np.ndarray:
+        if self.observer is None:
+            raise RuntimeError(f"{type(self).__name__} used before reset()")
         x_hat = self.observer.full_state(y)
         u = np.clip(self.compute(t, x_hat), -self.u_max, self.u_max)
         self.observer.update(y)

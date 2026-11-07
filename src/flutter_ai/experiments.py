@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import platform
+from collections.abc import Callable
+from functools import partial
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,21 +18,22 @@ from pathlib import Path
 import numpy as np
 
 from . import __version__
-from .controllers import LQRController, NeuralController, OpenLoop, policy_path
-from .flutter import flutter_analysis, pk_flutter_speed
+from .controllers import Controller, LQGController, LQRController, NeuralController, OpenLoop, policy_path
+from .flutter import flutter_analysis, flutter_speed, pk_flutter_speed
 from .params import WingParams
 from .paths import OUTPUTS_DIR
 from .scenarios import SCENARIOS, scenarios_for
 from .simulation import Scenario, SimResult, simulate
-from .supervisor import LLMSupervisor, RuleSupervisor
+from .supervisor import RandomSupervisor, RuleSupervisor, make_llm_supervisor
 
-CONTROLLERS = ("open_loop", "lqr", "neural")
-SUPERVISORS = ("none", "rules", "llm")
+CONTROLLERS = ("open_loop", "lqr", "lqg", "neural")
+SUPERVISORS = ("none", "rules", "random", "llm")
 
 # The comparison table in the paper
 STANDARD_CASES = [
     ("open_loop", "none"),
     ("lqr", "none"),
+    ("lqg", "none"),
     ("neural", "none"),
     ("lqr", "rules"),
     ("neural", "rules"),
@@ -42,6 +45,8 @@ def make_controller(kind: str):
         return OpenLoop()
     if kind == "lqr":
         return LQRController()
+    if kind == "lqg":
+        return LQGController()
     if kind == "neural":
         return NeuralController()
     raise ValueError(f"Unknown controller '{kind}'. Use one of {CONTROLLERS}")
@@ -52,8 +57,10 @@ def make_supervisor(kind: str | None):
         return None
     if kind == "rules":
         return RuleSupervisor()
+    if kind == "random":
+        return RandomSupervisor()
     if kind == "llm":
-        return LLMSupervisor()
+        return make_llm_supervisor()
     raise ValueError(f"Unknown supervisor '{kind}'. Use one of {SUPERVISORS}")
 
 
@@ -66,6 +73,45 @@ def run_case(p: WingParams, Uf: float, scenario: Scenario, controller: str, supe
     if controller == "open_loop" and supervisor not in (None, "none"):
         raise ValueError("A supervisor needs a feedback controller (lqr or neural).")
     return simulate(p, make_controller(controller), scenario, Uf, make_supervisor(supervisor), aggressiveness)
+
+
+def _survival_run(args: tuple) -> dict:
+    p, Uf, scenario, controller, supervisor = args
+    m = run_case(p, Uf, scenario, controller, supervisor).metrics
+    return {k: m[k] for k in ("exceeded_limits", "failure_time_s", "rms_h_mm", "cost_J", "saturation_fraction")}
+
+
+def survival_check(p: WingParams, Uf: float, base: Scenario, cases: list[tuple[str, str]], n_seeds: int = 20,
+                   workers: int = 0) -> list[dict]:
+    """
+    One simulation is one realisation of the disturbance: whether a controller survived it says little about whether
+    it is stable at that condition (in turbulence above ~1.1 U_F on uav_flap one seed can survive while half fail;
+    outputs/<preset>/envelope.json). This flies every (controller, supervisor) case over the benchmark's seed draws
+    0..n_seeds-1 of `base` (draw_scenario: seed 0 is `base` itself) and reports survival per case.
+    The LLM supervisor is refused (hundreds of slow calls). workers > 1: a process pool.
+    """
+    if any(sup == "llm" for _, sup in cases):
+        raise ValueError("The multi-seed check does not run the LLM supervisor (too many slow calls).")
+    jobs = [(p, Uf, draw_scenario(base, s), c, sup) for c, sup in cases for s in range(n_seeds)]
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(workers) as ex:
+            runs = list(ex.map(_survival_run, jobs, chunksize=max(1, len(jobs) // (4 * workers))))
+    else:
+        runs = [_survival_run(j) for j in jobs]
+    out = []
+    for i, (c, sup) in enumerate(cases):
+        ms = runs[i * n_seeds:(i + 1) * n_seeds]
+        ok = [m for m in ms if not m["exceeded_limits"]]
+        fails = [m["failure_time_s"] for m in ms if m["exceeded_limits"]]
+        out.append({"controller": c, "supervisor": sup, "n_seeds": n_seeds, "survived": len(ok),
+                    "failure_time_s_median": float(np.median(fails)) if fails else None,
+                    "rms_h_mm_median": float(np.median([m["rms_h_mm"] for m in ok])) if ok else None,
+                    "cost_J_median": float(np.median([m["cost_J"] for m in ok if m["cost_J"] is not None]))
+                    if any(m["cost_J"] is not None for m in ok) else None,
+                    "survived_per_seed": [not m["exceeded_limits"] for m in ms]})
+    return out
 
 
 def tradeoff_sweep(p: WingParams, Uf: float, scenario: Scenario, controller: str,
@@ -95,12 +141,15 @@ def delay_sweep(p: WingParams, Uf: float, controllers, delays=(0, 1, 2, 3, 4, 6)
       neural        one fixed policy (trained on 0-2 steps)
       lqr           re-designed for the true delay (it is told the delay - optimistic)
       lqr_nominal   designed for the nominal 1 step and kept fixed (the fair comparison)
+      lqg / lqg_nominal   the same two variants of the LQG baseline
     """
     base = base or SCENARIOS["discrete_gust"]["scenario"]
     out: dict = {"delays": list(delays), "dt": base.dt}
-    variants = {c: (lambda c=c: make_controller(c)) for c in controllers}
+    variants: dict[str, Callable[[], Controller]] = {c: partial(make_controller, c) for c in controllers}
     if "lqr" in controllers:
         variants["lqr_nominal"] = lambda: LQRController(design_delay=1)
+    if "lqg" in controllers:
+        variants["lqg_nominal"] = lambda: LQGController(design_delay=1)
     for c, factory in variants.items():
         out[c] = []
         for d in delays:
@@ -108,6 +157,56 @@ def delay_sweep(p: WingParams, Uf: float, controllers, delays=(0, 1, 2, 3, 4, 6)
             out[c].append({"delay_steps": int(d), "exceeded_limits": m["exceeded_limits"],
                            "failure_time_s": m["failure_time_s"], "rms_h_mm": m["rms_h_mm"],
                            "control_rate_rms": m["control_rate_rms"]})
+    return out
+
+
+def draw_scenario(base: Scenario, s: int) -> Scenario:
+    """
+    Seed s of a benchmark scenario. Turbulence: a new realisation of the same statistics. Deterministic gusts:
+    seed 0 is the nominal case; other seeds draw the gust amplitude x[0.75, 1.25], length [0.2, 0.5] s and
+    start [2.5, 3.5] s, and scale the initial plunge / pitch by [0.5, 1.5] with random signs, so a statistic
+    covers a family of gusts rather than one hand-picked gust.
+    """
+    if base.gust.kind == "turbulence" or base.sensor_noise > 0:
+        return replace(base, gust=replace(base.gust, seed=base.gust.seed + s), seed=s)
+    if s == 0 or base.gust.kind == "none":
+        return base
+    rng = np.random.default_rng(1000 + s)
+    gust = replace(base.gust, amplitude=base.gust.amplitude * rng.uniform(0.75, 1.25),
+                   duration=rng.uniform(0.2, 0.5), start=rng.uniform(2.5, 3.5))
+    sign = rng.choice([-1.0, 1.0], size=2)
+    return replace(base, gust=gust, seed=s, h0=base.h0 * rng.uniform(0.5, 1.5) * sign[0],
+                   alpha0_deg=base.alpha0_deg * rng.uniform(0.5, 1.5) * sign[1])
+
+
+# Paired comparisons reported for every scenario: (candidate, reference)
+COMPARISONS = [("neural", "lqr"), ("neural", "lqg"), ("lqg", "lqr"), ("neural+rules", "neural"), ("lqr+rules", "lqr")]
+STAT_METRICS = ("rms_h_mm", "cost_J", "control_energy")
+
+
+def paired_statistics(a: list[dict], b: list[dict], n_boot: int = 10000) -> dict:
+    """
+    Candidate a vs reference b over the same seeds. Per metric: mean difference (a - b) over the seeds where
+    both survived, a 95 % bootstrap CI of that mean, and the two-sided Wilcoxon signed-rank p-value.
+    Failures are counted separately (a failed run has no comparable RMS or J).
+    """
+    from scipy.stats import wilcoxon
+
+    both = [i for i in range(len(a)) if not a[i]["exceeded_limits"] and not b[i]["exceeded_limits"]]
+    out: dict = {"n_seeds": len(a), "n_both_survived": len(both),
+                 "failures": {"candidate": sum(m["exceeded_limits"] for m in a),
+                              "reference": sum(m["exceeded_limits"] for m in b)}}
+    rng = np.random.default_rng(0)
+    for key in STAT_METRICS:
+        d = np.array([a[i][key] - b[i][key] for i in both if a[i][key] is not None and b[i][key] is not None])
+        if len(d) < 2:
+            out[key] = {"n": int(len(d)), "note": "fewer than 2 paired runs; no statistics"}
+            continue
+        boot = rng.choice(d, size=(n_boot, len(d))).mean(axis=1)
+        p = 1.0 if np.allclose(d, 0.0) else float(wilcoxon(d).pvalue)
+        out[key] = {"n": int(len(d)), "mean_diff": float(d.mean()), "rel_diff": float(d.mean() / np.mean(
+            [b[i][key] for i in both])), "ci95": [float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))],
+            "wilcoxon_p": p}
     return out
 
 
@@ -121,16 +220,17 @@ def _aggregate(metric_list: list[dict]) -> dict:
     return out
 
 
-def run_benchmark(p: WingParams, seeds=(0, 1, 2, 3, 4), out_dir: Path | None = None, make_figures: bool = True,
+def run_benchmark(p: WingParams, seeds=tuple(range(20)), out_dir: Path | None = None, make_figures: bool = True,
                   log=print) -> dict:
     out_dir = Path(out_dir or OUTPUTS_DIR / p.name)
     out_dir.mkdir(parents=True, exist_ok=True)
     fa = flutter_analysis(p)
-    Uf = fa.flutter_speed
+    Uf = flutter_speed(p)
     Uf_pk = pk_flutter_speed(p)
     log(f"Preset '{p.name}' ({p.n_dof}-DOF, actuation {p.actuation})")
-    log(f"Flutter speed: {Uf:.3f} m/s (state-space)   {Uf_pk:.3f} m/s (p-k, exact Theodorsen)   "
-        f"difference {100 * (Uf - Uf_pk) / Uf_pk:+.2f}%")
+    pk_text = f"{Uf_pk:.3f} m/s (p-k, exact Theodorsen)   difference {100 * (Uf - Uf_pk) / Uf_pk:+.2f}%" \
+        if Uf_pk else "p-k found no flutter in its range"
+    log(f"Flutter speed: {Uf:.3f} m/s (state-space)   {pk_text}")
 
     has_neural = neural_available(p)
     cases = [c for c in STANDARD_CASES if has_neural or c[0] != "neural"]
@@ -166,30 +266,37 @@ def run_benchmark(p: WingParams, seeds=(0, 1, 2, 3, 4), out_dir: Path | None = N
     for name, spec in scenarios.items():
         base: Scenario = spec["scenario"]
         log(f"\nScenario '{name}': {spec['description']}")
-        stochastic = base.gust.kind == "turbulence" or base.sensor_noise > 0  # only these need several seeds
-        run_seeds = seeds if stochastic else seeds[:1]
-        table = {}
+        table, raw = {}, {}
         for ctrl, sup in cases:
             per_seed = []
-            for s in run_seeds:
-                gust = replace(base.gust, seed=base.gust.seed + s)
-                res = run_case(p, Uf, replace(base, gust=gust, seed=s), ctrl, sup)
+            for s in seeds:
+                res = run_case(p, Uf, draw_scenario(base, s), ctrl, sup)
                 per_seed.append(res.metrics)
-                if s == run_seeds[0]:
+                if s == seeds[0]:
                     examples.setdefault(name, []).append(res)
             key = ctrl if sup == "none" else f"{ctrl}+{sup}"
+            raw[key] = per_seed
             table[key] = agg = _aggregate(per_seed)
             log(f"  {key:14s} failures {agg['failures']}/{agg['n']}   "
                 f"RMS h {agg['rms_h_mm']['mean']:6.2f} +/- {agg['rms_h_mm']['std']:.2f} mm   "
                 f"peak h {agg['peak_h_mm']['mean']:6.2f} mm   effort {agg['control_energy']['mean']:.3f}   "
                 f"rate {agg['control_rate_rms']['mean']:.3f}")
-        results["scenarios"][name] = {"description": spec["description"], "scenario": base.to_dict(), "cases": table}
+        stats = {f"{a} vs {b}": paired_statistics(raw[a], raw[b]) for a, b in COMPARISONS if a in raw and b in raw}
+        for label, st in stats.items():
+            r = st["rms_h_mm"]
+            if "mean_diff" in r:
+                log(f"  {label:22s} RMS h diff {r['mean_diff']:+6.2f} mm ({100 * r['rel_diff']:+5.1f} %), "
+                    f"95% CI [{r['ci95'][0]:+.2f}, {r['ci95'][1]:+.2f}], Wilcoxon p = {r['wilcoxon_p']:.2g}, "
+                    f"n = {r['n']}, failures {st['failures']['candidate']}/{st['failures']['reference']}")
+        results["scenarios"][name] = {"description": spec["description"], "scenario": base.to_dict(), "cases": table,
+                                      "statistics": stats}
 
     log("\nEffort/response trade-off sweeps (turbulence_patch)...")
     tb = scenarios["turbulence_patch"]["scenario"]
-    feedback = [c for c in ("lqr", "neural") if c in controllers]
+    feedback = [c for c in ("lqr", "lqg", "neural") if c in controllers]
     results["tradeoff"] = {c: tradeoff_sweep(p, Uf, tb, c) for c in feedback}
-    results["tradeoff"]["supervised"] = {f"{c}+rules": run_case(p, Uf, tb, c, "rules").metrics for c in feedback}
+    results["tradeoff"]["supervised"] = {f"{c}+rules": run_case(p, Uf, tb, c, "rules").metrics
+                                         for c in feedback if c != "lqg"}
     log("Velocity sweep...")
     results["velocity_sweep"] = velocity_sweep(p, Uf, controllers, base=scenarios["discrete_gust"]["scenario"])
     log("Delay-robustness sweep...")

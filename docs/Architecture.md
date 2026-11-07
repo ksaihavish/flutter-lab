@@ -1,7 +1,7 @@
 # Architecture
 
 *How the system is built: flow, components, folder structure, tech stack.*
-Last updated: 2026-09-28 · Version 0.3.0
+Last updated: 2026-09-29 · Version 0.3.0
 
 ---
 
@@ -10,7 +10,7 @@ Last updated: 2026-09-28 · Version 0.3.0
 ```
                           ┌──────────────────── slow loop (every 0.25 s) ────────────────────┐
                           │                                                                   │
-   measurements ──► Situation report ──► Supervisor (rules | Claude) ──► mode ──► aggressiveness a ∈ [0,1]
+   measurements ──► Situation report ──► Supervisor (rules | LLM) ──► mode ──► aggressiveness a ∈ [0,1]
         ▲            (features + text)     enum JSON, fallback,                          │
         │                                  call budget, latency                          ▼
         │                  ┌──────────────── fast loop (200 Hz) ─────────────────────────────────┐
@@ -78,8 +78,10 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | `controllers/base.py` | `Controller` interface, command history, `AeroLagObserver`, aggressiveness mapping |
 | `controllers/costs.py` | Shared Q and R weights (Bryson), so LQR and neural optimise the same objective |
 | `controllers/lqr.py` | Delay-augmented discrete LQR (DARE); `closed_loop_radius()` for delay-margin analysis (includes the observer) |
+| `controllers/lqg.py` | LQG baseline: LQR on the plant augmented with an AR(1) gust state, steady-state Kalman filter (aero-lag states + gust) replacing the observer |
 | `controllers/neural.py` | Policy file format, NumPy inference, `linearize()`; one policy per preset |
-| `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (Claude) |
+| `supervisor/` | `report.py` (features + text), `modes.py`, `rules.py`, `llm.py` (one safety wrapper; backends `OllamaSupervisor` (local, default) and `ClaudeSupervisor`) |
+| `fault_tolerance/` | Fault-tolerant supervision study: `faults.py` (mid-flight faults), `diagnostics.py` (on-board model-consistency features + report), `simulate.py` (controller bank with bumpless transfer, gain scheduling, autopilot, faults, dwell time), `supervisors.py` (rules, rules + physics, random, oracle), `llm.py` (LLM configured for the FT modes), `benchmark.py`, `stability.py` (dwell-time bound), `margin.py` (on-board flutter-margin estimator), `recording.py` (one flight recorded for the Guardian view: every supervisor tick's features, report text, estimate and decision, plus the true flutter speed per fault level) |
 | `simulation.py` | Closed-loop runner (`Scenario` → `SimResult`): delay queue, saturation, failure detection, supervisor scheduling |
 | `metrics.py` | Peak/RMS h, α, β; settling; gust recovery; effort; command rate; saturation; mode switches |
 | `scenarios.py` | Named benchmark scenarios; `scenarios_for(preset)` scales disturbances per rig (BACT ×0.25) |
@@ -87,7 +89,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | `experiments.py` | Benchmark: scenarios × cases × seeds; trade-off, velocity and delay sweeps → `outputs/<preset>/results.json` |
 | `plots.py` | Publication figures (same entity colours as the app) |
 | `data.py` | Dataset intake: format checks, dimensional parameters → `WingParams`, predicted vs measured flutter, export of simulated runs |
-| `api/` | FastAPI app + Pydantic schemas; serves `frontend/` |
+| `api/` | FastAPI app + Pydantic schemas; `guardian.py` (Guardian flights: one background worker, polling, in-memory recordings); serves `frontend/` (`/` simulator, `/guardian` Guardian view) |
 | `__main__.py` | CLI: `analyze`, `train`, `evaluate`, `serve`, `check-data`, `all` |
 
 ## 4. Folder structure
@@ -102,7 +104,8 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 ├── CLAUDE.md                          entry point for AI assistants
 ├── .env.example                       ANTHROPIC_API_KEY etc. (copy to .env; git-ignored)
 ├── src/flutter_ai/                    the Python package (§3)
-├── frontend/                          static web app, no build step (index.html, css/app.css, js/*.js)
+├── frontend/                          static web app, no build step: index.html (simulator), guardian.html (Guardian
+│                                      view), css/app.css (tokens) + css/guardian.css, js/*.js (shared chart.js, viewport.js, api.js)
 ├── models/
 │   ├── neural_policy_<preset>.npz     trained policy per preset (weights + metadata)
 │   └── training_history_<preset>.json
@@ -120,11 +123,11 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 | Language | Python ≥ 3.10 (developed on 3.14) | Scientific ecosystem |
 | Numerics | NumPy, SciPy (`expm`, `solve_discrete_are`, Hankel functions, `linear_sum_assignment`) | Exact, well tested |
 | Learning | PyTorch CPU, **training only** | Differentiable simulation; serving needs only NumPy |
-| LLM | Anthropic SDK, `claude-opus-5` (via `FLUTTER_AI_LLM_MODEL`), structured JSON output, server-side refusal fallback | Enum-constrained decisions |
+| LLM | Local: Ollama REST API via `urllib`, `llama3.1:8b`, schema-constrained decoding. Claude: Anthropic SDK, `claude-opus-5`, structured JSON output, server-side refusal fallback. Select with `FLUTTER_AI_LLM_BACKEND` | Enum-constrained decisions |
 | API | FastAPI + Pydantic v2 + Uvicorn | Typed validation; docs at `/docs` |
 | Frontend | Vanilla ES modules + Canvas 2D | Zero toolchain |
 | Figures | Matplotlib (Agg) | Publication PNGs |
-| Tests | pytest + FastAPI TestClient | 73 tests |
+| Tests | pytest + FastAPI TestClient | 179 tests |
 | Quality gates | ruff, pre-commit, GitHub Actions CI, Dependabot | Every PR is linted, tested on Linux + Windows, benchmarked, containerised |
 | Deployment | Docker (`python:3.12-slim`, non-root, health check) | `docker compose up --build` |
 
@@ -137,6 +140,28 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
    outside its training range.
 4. The time series are downsampled for the browser (`u` is a list of input channels; `beta` is
    included for 3-DOF).
+
+### Request flow: Guardian flights (`/api/guardian/*`, page `/guardian`)
+
+A 30 s fault-tolerant flight with the on-board estimator takes tens of seconds to minutes of CPU, so it is a job:
+
+1. `GET /api/guardian/options`: faults (`FAULTS` + benchmark onset/ramp/size), supervisors (`none`, `rules`,
+   `rules+physics`, `guardian` (default; estimator v2 + learned diagnoser, flown exactly as in `ft-benchmark`,
+   each estimate carries the guardian's `physics_verdict`); **no LLM**: this view never calls a model), FT modes, defaults (`GuardianIn`).
+2. `POST /api/guardian/flights` (`GuardianIn`: fault, onset ≥ 4.5 s, ramp, size, supervisor, estimator, duration 6–60 s,
+   seed, default 1000 = development seed) → 202 `{id, status}`. Validation errors: unknown preset 404; other presets,
+   unknown fault, onset after the end, rules + physics without the estimator 422; missing neural policy 409; more
+   than 3 flights queued 429. The id is a hash of the request: flights are deterministic, so an identical request
+   reuses the running or finished recording.
+3. One daemon worker thread runs `recording.record_flight` → `ft_simulate` (benchmark settings, estimator every 1 s)
+   with a recording wrapper around the supervisor, then the true flutter speed of the damaged wing at every fault
+   level (same number as `flutter_analysis`, root only; cached per wing).
+4. `GET /api/guardian/flights/{id}` → `{status, stage (flying | ground_truth), progress, sim_time}`; once `done`, also
+   `result`: time series (SI), supervisor ticks (features, `format_ft_report` text, optional `diagnosis`), estimates,
+   decisions with outcomes, switches, ground truth, metrics. A failed job answers with its HTTP error (409/422/500),
+   never 200. Recordings are kept in memory (last 12).
+5. The browser plays the recording back at 0.1–4×; every panel reads the latest tick / estimate / decision at the
+   playhead.
 
 ## 7. Timing, numerics and stability analysis
 

@@ -37,12 +37,13 @@ the safe flight envelope, but:
 
 **Research questions**
 
-| ID | Question | How we answer it |
-|----|----------|------------------|
-| RQ1 | Can a neural policy trained through a validated physics model outperform LQR under actuator saturation, turbulence and loop delay? | Benchmark scenarios, multiple seeds, Pareto (effort vs response) analysis |
-| RQ2 | Does an LLM supervisor add value *beyond* choosing a good fixed trade-off? | A supervisor only adds value if its point lies **below** the fixed-aggressiveness curve (`outputs/fig*_tradeoff.png`) |
-| RQ3 | What do LLM latency and failures cost, and are the safety mechanisms sufficient? | Measured latency applied in simulation time; fallback rate; call budget |
-| RQ4 | Is the supervisor's reasoning useful to a human (interpretability)? | Qualitative analysis of the decision log; optional user study |
+| ID | Question | How we answer it | Status (2026-09-29) |
+|----|----------|------------------|---------------------|
+| RQ1 | Can a neural policy trained through a validated physics model outperform LQR under actuator saturation, turbulence and loop delay? | Benchmark scenarios, 20 seeds, paired statistics, robustness and ablations, against LQR **and a turbulence-aware LQG** | Answered: beats plain LQR, not LQG; wins only in some regimes (delay, some actuator limits) |
+| RQ2 | Does an LLM supervisor add value *beyond* choosing a good fixed trade-off? | A supervisor only adds value if its point lies **below** the fixed-aggressiveness curve | Answered for effort modes: **no** (latency ≫ gust time scale) |
+| RQ2′ | Under slowly developing faults, does an on-board LLM choosing among pre-verified modes beat no, random and rule-based supervision, and how close is it to an oracle, also on held-out faults? | `ft-benchmark`: 6 faults (2 held out), 20 seeds, exact McNemar and Wilcoxon tests | Answered 2026-09-29: LLM 27 %, rules 48 %, oracle 100 % of faulty flights survived (LLM vs rules: exact McNemar p = 0.0026); Memory.md §4 |
+| RQ3 | What do LLM latency and failures cost, and are the safety mechanisms sufficient? | Measured latency applied in simulation time; fallback rate; one question at a time; dwell-time stability bound | Latency measured (local 8B model: seconds); dwell-time guarantee proven (small-signal) |
+| RQ4 | Is the supervisor's reasoning useful to a human (interpretability)? | Qualitative analysis of the decision log; optional user study | Open: decision logs are saved (`ft_benchmark.json → decisions`) |
 
 ## 3. Target users
 

@@ -31,22 +31,23 @@ policy, a delay-robustness sweep, dataset format + `check-data`.
 
 ---
 
-## Phase 4: Make the paper publishable ⬜ ← **next**
+## Phase 4: Make the paper publishable 🟡 (all evidence done 2026-09-29, incl. fault-tolerant supervision; remaining: the owner's writing and review, 4.8)
 
 **Goal:** answer RQ1–RQ4 (`PRD.md`) with evidence a reviewer will accept.
 
 | # | Task | Done when |
 |---|------|-----------|
 | 4.0a | ✅ **BACT preset** from NASA/TP-1998-206270 + `validate` command: flutter frequency −0.2 %, flutter q +24 % vs wind tunnel | `outputs/validation/bact.json` |
-| 4.0 | **Real data.** Collect one ★★★ dataset (`data/README.md`) → `check-data` → report the model error; then physics-informed parameter identification from time histories (the legitimate PINN contribution) | Identified vs nominal parameters table; benchmark re-run on the identified preset |
-| 4.1 | **Run the Claude supervisor experiments.** Set `ANTHROPIC_API_KEY`, add `("neural","llm")` and `("lqr","llm")` to a separate LLM benchmark (it costs money; keep it out of the default `evaluate`), use 5+ seeds, and record latency, fallback rate and API cost | LLM points are on the trade-off figure; latency histogram; cost per run |
-| 4.2 | **Stronger baselines.** LQG with a Dryden turbulence model (so LQR also "knows" the turbulence), gain-scheduled LQR, and optionally H∞ (`python-control` / `slycot`) | The neural advantage is re-measured against fair baselines |
-| 4.3 | **Robustness study.** Monte Carlo over ±10–20 % mass, stiffness and damping; sensor noise; 1–3 sample delay; actuator bandwidth (first-order lag) | Failure rate and RMS vs uncertainty, per controller |
-| 4.4 | **Statistics.** 20+ seeds for stochastic scenarios; paired tests (Wilcoxon) or bootstrap confidence intervals | Every claimed improvement has a CI or p-value |
-| 4.5 | **Ablations.** Neural without fine-tuning (imitation only), without the rate penalty, without airspeed input; supervisor with random mode choice | Table showing what each component contributes |
-| 4.6 | ✅ Realistic actuation: trailing-edge flap servo (done in 3.5). Remaining: actuator rate limit and servo bandwidth identified from data | Rate limit in the plant and in training |
-| 4.7 | **Literature review and novelty check.** Search: "LLM controller tuning", "language model supervisory control", "differentiable simulation flutter", "neural network flutter suppression", "BACT / NATA wind tunnel" | Related-work section written; the "first" claim is removed or verified |
-| 4.8 | **Write the paper** from `docs/research/paper-outline.md`; every number cites `results.json` | Draft reviewed by your advisor |
+| 4.0 | 🟡 No open time-history data found (search 2026-09-29, `related-work.md`). **`identify` pipeline done** (multiple-shooting output error, tested on synthetic data). **Real data.** Collect one ★★★ dataset (`data/README.md`) → `check-data` → report the model error; then physics-informed parameter identification from time histories (the legitimate PINN contribution) | Identified vs nominal parameters table; benchmark re-run on the identified preset |
+| 4.1 | ✅ `llm-benchmark` (local Ollama by default; Claude switchable): latency, fallbacks, agreement with rules, paired statistics, figure. **Run the LLM supervisor experiments.** Set `ANTHROPIC_API_KEY`, add `("neural","llm")` and `("lqr","llm")` to a separate LLM benchmark (it costs money; keep it out of the default `evaluate`), use 5+ seeds, and record latency, fallback rate and API cost | LLM points are on the trade-off figure; latency histogram; cost per run |
+| 4.2 | ✅ **LQG** + shared rate penalty + design knobs tuned for the real actuator (`tune`). Remaining, optional: **Stronger baselines.** LQG with a Dryden turbulence model (so LQR also "knows" the turbulence), gain-scheduled LQR, and optionally H∞ (`python-control` / `slycot`) | The neural advantage is re-measured against fair baselines |
+| 4.3 | ✅ `robustness`: model error ±5/10/20 %, sensor noise, actuator rate limits. **Robustness study.** Monte Carlo over ±10–20 % mass, stiffness and damping; sensor noise; 1–3 sample delay; actuator bandwidth (first-order lag) | Failure rate and RMS vs uncertainty, per controller |
+| 4.4 | ✅ 2026-09-29: 20 seeds, randomised gusts, cost J, paired Wilcoxon + bootstrap CIs in `results.json`. **Statistics.** 20+ seeds for stochastic scenarios; paired tests (Wilcoxon) or bootstrap confidence intervals | Every claimed improvement has a CI or p-value |
+| 4.5 | ✅ `ablations` + `train --variant` (imitation only, no rate penalty, no airspeed; random supervisor). **Ablations.** Neural without fine-tuning (imitation only), without the rate penalty, without airspeed input; supervisor with random mode choice | Table showing what each component contributes |
+| 4.6 | ✅ Flap servo (3.5) + **slew-rate limit in plant and training** (uav_flap 545 °/s from a UAV servo datasheet; BACT 250 °/s NASA nominal). Remaining: values identified from data | Rate limit in the plant and in training |
+| 4.7 | ✅ `docs/research/related-work.md` (every entry opened; closest prior work identified). **Literature review and novelty check.** Search: "LLM controller tuning", "language model supervisory control", "differentiable simulation flutter", "neural network flutter suppression", "BACT / NATA wind tunnel" | Related-work section written; the "first" claim is removed or verified |
+| 4.9 | ✅ 2026-09-29 **Fault-tolerant LLM supervision** (`research/fault-tolerant-plan.md`): faults, diagnostics, controller bank with bumpless transfer, rules / random / LLM / oracle supervisors, `ft-benchmark` (20 seeds, paired statistics), `ft-stability` (dwell-time bound 6.5 s ≤ enforced 7 s) | Survival and mission cost per fault, per supervisor; held-out faults reported separately; paper section generated |
+| 4.8 | 🟡 `python -m flutter_ai paper` generates `paper-draft.md` from the result files; every section generated, including §7.5, §8 and §10; the owner edits the wording and adds the closing sentence. **Write the paper** from `docs/research/paper-outline.md`; every number cites `results.json` | Draft reviewed by your advisor |
 
 **Starter prompt:** *"Read CLAUDE.md, docs/Memory.md and docs/Rules.md. Do Phase 4.2: add an
 LQG controller with a first-order turbulence model as a new Controller subclass, register
@@ -71,11 +72,11 @@ it everywhere Architecture.md §9 lists, add tests, re-run evaluate, and update 
 |---|------|
 | 6.1 | ✅ Git + GitHub; project moved out of OneDrive to `C:\Users\lio48\dev\flutter-lab` |
 | 6.2 | ✅ CI (GitHub Actions): ruff, pytest on Linux (py3.11, 3.13) + Windows, benchmark smoke run with figure artifacts, Docker build + health check; Dependabot |
-| 6.3 | ✅ `pre-commit` hooks (ruff, whitespace, large files, private keys). Remaining: `mypy` on `src/` |
+| 6.3 | ✅ `pre-commit` hooks (ruff, whitespace, large files, private keys); ✅ `mypy` clean on `src/`, run in CI |
 | 6.4 | ✅ Docker image (`python:3.12-slim`, non-root, health check) + `docker compose up --build` |
 | 6.5 | Config files for experiments (YAML/TOML scenarios) instead of code edits; experiment tracking (MLflow or Weights & Biases) for training runs |
 | 6.6 | Versioned models and datasets (git-LFS or DVC), with a model card per policy |
-| 6.7 | Structured logging (JSON); `/api/health` includes the version and model hash |
+| 6.7 | ✅ `/api/health` includes the version and model/tuning file hashes. Remaining: structured (JSON) logging |
 
 ## Phase 7: Engineering credibility (what makes it trustworthy to industry) ⬜
 

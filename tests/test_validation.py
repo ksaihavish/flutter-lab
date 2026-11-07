@@ -8,7 +8,7 @@ import pytest
 from flutter_ai.controllers import policy_path
 from flutter_ai.flutter import flutter_analysis
 from flutter_ai.params import FT, LBF, PSF, get_preset
-from flutter_ai.scenarios import scenarios_for
+from flutter_ai.scenarios import SCENARIOS, scenarios_for
 from flutter_ai.validation import BACT_REFERENCE, flap_cl_delta
 
 SPAN = 32 * 0.0254
@@ -57,7 +57,7 @@ def test_partial_span_flap_scales_flap_effectiveness():
 
 
 def test_bact_scenarios_use_scaled_disturbances():
-    std = scenarios_for("uav_flap")["discrete_gust"]["scenario"]
+    std = SCENARIOS["discrete_gust"]["scenario"]  # unscaled reference
     bact = scenarios_for("bact")["discrete_gust"]["scenario"]
     assert bact.h0 == pytest.approx(0.25 * std.h0)
     assert bact.gust.amplitude == pytest.approx(0.25 * std.gust.amplitude)

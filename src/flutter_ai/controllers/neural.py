@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -77,7 +78,7 @@ class NeuralPolicy:
     def save(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        arrays = {"n_layers": np.array(len(self.weights)), "scales": self.scales, "u_max": self.u_max,
+        arrays: dict[str, Any] = {"n_layers": np.array(len(self.weights)), "scales": self.scales, "u_max": self.u_max,
                   "meta": np.array(json.dumps(self.meta))}
         for i, (W, b) in enumerate(self.weights):
             arrays[f"W{i}"], arrays[f"b{i}"] = W, b
@@ -95,6 +96,8 @@ class NeuralPolicy:
         return self.u_max * np.tanh(self._pre(features) - self._pre(features_at_zero))
 
     def features(self, x_hat, u_prev, u_ratio, aggressiveness) -> np.ndarray:
+        if not self.meta.get("config", {}).get("use_airspeed", True):
+            u_ratio = 1.0  # ablation policy trained speed-blind: its airspeed feature is always zero
         return build_features(x_hat, u_prev, self.scales, self.u_max, u_ratio, aggressiveness)
 
     def linearize(self, u_ratio: float, aggressiveness: float, eps: float = 1e-7) -> np.ndarray:
@@ -141,6 +144,8 @@ class NeuralController(Controller):
 
     def compute(self, t: float, x_hat: np.ndarray) -> np.ndarray:
         pol = self._policy
+        if pol is None:
+            raise RuntimeError("NeuralController used before reset()")
         ratio = self.U / self.flutter_speed
         f = pol.features(x_hat, self.history[0], ratio, self.aggressiveness)
         f0 = pol.features(np.zeros_like(x_hat), np.zeros_like(self.u_max), ratio, self.aggressiveness)

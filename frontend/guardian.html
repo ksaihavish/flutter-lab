@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flutter Guardian</title>
+  <meta name="description" content="Live view of the fault-tolerant, physics-informed flutter supervisor: a damaged wing, the on-board flutter-margin estimate and every supervisor decision.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M3 18c6-7 13-9 26-4-9 1-17 3-26 4z' fill='%232a78d6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/guardian.css">
+  <script>
+    // Apply the saved theme before first paint (per-viewer convenience only).
+    try { const t = localStorage.getItem("flutterlab-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body class="guardian">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 18c6-7 13-9 26-4-9 1-17 3-26 4z"/></svg>
+      <div>
+        <h1>Flutter Guardian</h1>
+        <p class="subtitle">Fault-tolerant, physics-informed supervision of an actively controlled wing (recorded flight, played back)</p>
+      </div>
+    </div>
+    <nav class="topnav" aria-label="Views">
+      <a href="/">Simulator</a>
+      <a href="/guardian" aria-current="page">Guardian</a>
+    </nav>
+    <div class="status-row" id="status-row"></div>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+  </header>
+
+  <div class="layout">
+    <aside class="controls" aria-label="Mission settings">
+      <section class="control-group">
+        <h2>Mission</h2>
+        <label class="field">
+          <span>Wing</span>
+          <select id="preset"></select>
+        </label>
+        <dl class="readouts">
+          <div><dt>Healthy flutter speed</dt><dd id="ro-flutter">–</dd></div>
+          <div><dt>Cruise speed (last flight)</dt><dd id="ro-cruise">–</dd></div>
+        </dl>
+        <div class="field-row">
+          <label class="field"><span>Duration (s)</span><input type="number" id="duration" value="30" step="1" min="6" max="60"></label>
+          <label class="field" title="1000 is the development seed. The benchmark's test seeds are 0-19; 100-119 are kept fresh for the physics study.">
+            <span>Turbulence seed</span><input type="number" id="seed" value="1000" step="1" min="0">
+          </label>
+        </div>
+      </section>
+
+      <section class="control-group">
+        <h2>Fault</h2>
+        <label class="field">
+          <span>Injected fault</span>
+          <select id="fault"></select>
+        </label>
+        <p class="hint" id="fault-hint"></p>
+        <div class="field-row">
+          <label class="field"><span>Onset (s)</span><input type="number" id="onset" step="0.5" min="4.5" max="60"></label>
+          <label class="field"><span>Ramp (s)</span><input type="number" id="ramp" step="0.5" min="0" max="30"></label>
+        </div>
+        <label class="field">
+          <span>Size <output id="out-severity"></output></span>
+          <input type="range" id="severity" min="0.25" max="3" step="0.05">
+        </label>
+      </section>
+
+      <section class="control-group">
+        <h2>Supervisor</h2>
+        <div class="scenario-buttons" id="supervisor-buttons" role="group" aria-label="Supervisor"></div>
+        <p class="hint" id="supervisor-hint"></p>
+        <label class="case-option" id="estimator-label">
+          <input type="checkbox" id="estimator" checked>
+          <span>On-board physics estimator</span>
+        </label>
+        <p class="hint" id="estimator-hint"></p>
+        <p class="hint">The LLM supervisor is not offered here: this view never calls a language model (use <code>ft-benchmark</code>).</p>
+      </section>
+
+      <button class="primary-btn" id="fly-btn" type="button">Fly mission</button>
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track" role="progressbar" id="progress-bar" aria-label="Flight computation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="hint" id="progress-text"></p>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="banner" id="banner" role="alert" hidden></div>
+      <p class="visually-hidden" id="announce" aria-live="polite"></p>
+
+      <!-- Cockpit: wing animation, playback, mode timeline, current mode and fault -->
+      <section class="card" aria-labelledby="cockpit-title">
+        <div class="card-head">
+          <h2 id="cockpit-title">Flight</h2>
+          <div class="playback">
+            <button class="icon-btn" id="play-btn" type="button" aria-label="Play">
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-play"><path d="M8 5v14l11-7z"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="icon-pause"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+            </button>
+            <button class="icon-btn" id="restart-btn" type="button" aria-label="Restart">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            </button>
+            <label class="speed-select">
+              <span class="visually-hidden">Playback speed</span>
+              <select id="play-speed">
+                <option value="0.1">0.1×</option>
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1× real time</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select>
+            </label>
+            <span class="time-readout" id="time-readout">t = 0.00 s</span>
+          </div>
+        </div>
+        <div class="cockpit">
+          <div class="cockpit-main">
+            <div class="viewport-wrap g-viewport"><canvas id="viewport" aria-label="Animated wing section, drawn to true scale"></canvas></div>
+            <input type="range" id="scrub" min="0" max="1000" value="0" step="1" aria-label="Scrub flight time">
+            <div class="timeline-wrap">
+              <div class="timeline" id="timeline" role="img" aria-label="Mode timeline"></div>
+              <div class="legend legend-small" id="timeline-legend"></div>
+            </div>
+            <p class="hint viewport-note">True scale (plunge and chord share one scale); air flows left to right. Wing colour = the active controller (LQG or neural, as labelled). Solid flap = actual angle; thin outline = commanded angle.</p>
+          </div>
+          <div class="instruments" id="instruments">
+            <div class="inst">
+              <span class="inst-label">Flight status</span>
+              <span class="inst-value status-cell" id="i-status">–</span>
+            </div>
+            <div class="inst">
+              <span class="inst-label">Supervisor mode</span>
+              <span class="inst-value mode-pill" id="i-mode">–</span>
+              <span class="inst-sub" id="i-mode-sub"></span>
+            </div>
+            <div class="inst">
+              <span class="inst-label">Injected fault <span class="tag">simulation truth</span></span>
+              <span class="inst-value" id="i-fault">–</span>
+              <span class="inst-sub" id="i-fault-sub"></span>
+              <div class="level-bar" aria-hidden="true"><div class="level-fill" id="i-fault-bar"></div></div>
+            </div>
+            <div class="inst">
+              <span class="inst-label">Peak motion, last 4 s</span>
+              <span class="inst-value" id="i-risk">–</span>
+              <span class="inst-sub">of the structural limit (on-board measurement)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Flutter margin -->
+      <section class="card" aria-labelledby="margin-title">
+        <div class="card-head">
+          <h2 id="margin-title">Flutter margin</h2>
+          <label class="case-option toggle">
+            <input type="checkbox" id="truth-toggle">
+            <span>Show ground truth <span class="tag">simulation only</span></span>
+          </label>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span class="kpi-label">Airspeed</span><span class="kpi-value" id="k-speed">–</span><span class="kpi-sub" id="k-speed-sub"></span></div>
+          <div class="kpi"><span class="kpi-label"><span class="key-line" style="background: var(--c-estimate)"></span>Estimated flutter speed</span><span class="kpi-value" id="k-est">–</span><span class="kpi-sub" id="k-est-sub"></span></div>
+          <div class="kpi"><span class="kpi-label">Margin to flutter</span><span class="kpi-value" id="k-margin">–</span><span class="kpi-sub" id="k-margin-sub"></span></div>
+          <div class="kpi" id="k-truth-tile" hidden><span class="kpi-label"><span class="key-line" style="background: var(--muted)"></span>True flutter speed</span><span class="kpi-value" id="k-truth">–</span><span class="kpi-sub">the aircraft cannot know this</span></div>
+        </div>
+        <div class="gauge" id="gauge" role="img" aria-label="Flutter margin gauge"></div>
+        <p class="hint" id="estimate-note">Open-loop flutter speed of the wing identified on board from the last 4 s of measurements (pitch stiffness and flap effectiveness), with ±1σ. Above it, the wing is held only by the active controller.</p>
+      </section>
+
+      <!-- Predicted stability of each mode -->
+      <section class="card" aria-labelledby="lights-title">
+        <div class="card-head">
+          <h2 id="lights-title">Predicted stability of each mode</h2>
+          <span class="hint" id="lights-time"></span>
+        </div>
+        <div class="lights" id="lights"></div>
+        <p class="hint" id="lights-note">On-board prediction: spectral radius ρ of each mode's closed loop on the identified wing, worst case on the way to that mode's airspeed (ρ &lt; 1 stable). Linear: it cannot see actuator, sensor, timing or turbulence faults, nor saturation.</p>
+      </section>
+
+      <div class="g-two">
+        <section class="card" aria-labelledby="report-title">
+          <div class="card-head">
+            <h2 id="report-title">Supervisor report</h2>
+            <span class="hint" id="report-time"></span>
+          </div>
+          <p class="hint">The text an LLM supervisor would read at this moment (the rule supervisors use the same numbers).</p>
+          <pre class="report" id="report" tabindex="0" aria-label="Supervisor report text"></pre>
+        </section>
+
+        <section class="card" aria-labelledby="log-title">
+          <div class="card-head">
+            <h2 id="log-title">Decisions</h2>
+            <label class="case-option toggle">
+              <input type="checkbox" id="kept-toggle">
+              <span>Show “keep” answers</span>
+            </label>
+          </div>
+          <ol class="decision-log g-log" id="decision-log"></ol>
+        </section>
+      </div>
+
+      <section class="card" aria-labelledby="diag-title" id="diag-card" hidden>
+        <div class="card-head">
+          <h2 id="diag-title">Fault diagnosis (on-board, learned)</h2>
+          <span class="hint" id="diag-time"></span>
+        </div>
+        <div id="diagnosis"></div>
+      </section>
+
+      <section class="card" aria-labelledby="summary-title">
+        <div class="card-head">
+          <h2 id="summary-title">Flight summary</h2>
+          <div class="btn-row">
+            <button class="ghost-btn" id="csv-btn" type="button" disabled>Download CSV</button>
+            <button class="ghost-btn" id="json-btn" type="button" disabled>Download recording (JSON)</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="metrics g-summary" id="summary"></table></div>
+      </section>
+
+      <div class="chart-grid">
+        <section class="card chart-card"><h3>Airspeed and flutter speed (m/s)</h3><div class="legend legend-small" id="legend-speed"></div><div class="chart" id="chart-speed"></div></section>
+        <section class="card chart-card"><h3>Predicted spectral radius per mode (on-board; below 1 = stable)</h3><div class="legend legend-small" id="legend-radius"></div><div class="chart" id="chart-radius"></div></section>
+        <section class="card chart-card"><h3>Plunge h (mm)</h3><div class="chart" id="chart-h"></div></section>
+        <section class="card chart-card"><h3>Pitch α (°)</h3><div class="chart" id="chart-a"></div></section>
+        <section class="card chart-card"><h3>Flap angle β and command (°)</h3><div class="legend legend-small" id="legend-beta"></div><div class="chart" id="chart-beta"></div></section>
+        <section class="card chart-card"><h3>Injected fault size (% of the benchmark fault; simulation truth)</h3><div class="chart" id="chart-fault"></div></section>
+      </div>
+    </main>
+  </div>
+
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+  <script type="module" src="js/guardian.js"></script>
+</body>
+</html>

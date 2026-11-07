@@ -44,13 +44,14 @@ contrast, so the rule is: always show a legend and the results table.
 |------|-------|-------|------|
 | Open loop (baseline, deliberately recessive) | `--c-open_loop` | `#898781` | `#898781` |
 | LQR | `--c-lqr` | `#2a78d6` | `#3987e5` |
+| LQG (turbulence model) | `--c-lqg` | `#4a3aa7` | `#9085e9` |
 | Neural (physics-trained) | `--c-neural` | `#eb6834` | `#d95926` |
 | LQR + rule supervisor | `--c-lqr-rules` | `#1baf7a` | `#199e70` |
 | Neural + rule supervisor | `--c-neural-rules` | `#eda100` | `#c98500` |
-| + Claude supervisor | `--c-llm` | `#e87ba4` | `#d55181` |
+| + LLM supervisor (local or Claude) | `--c-llm` | `#e87ba4` | `#d55181` |
 
-A new controller takes the **next** palette slot (violet `#4a3aa7` / `#9085e9`, then red
-`#e34948` / `#e66767`). Re-run the validator for the new set. Never generate new hues.
+A new controller takes the **next** palette slot (next: red `#e34948` / `#e66767`; violet went to LQG,
+re-validated 2026-09-29: CVD ΔE ≥ 9.1 light / 8.4 dark). Re-run the validator for the new set. Never generate new hues.
 At most one Claude case is shown at a time.
 
 ### Other roles
@@ -60,7 +61,13 @@ At most one Claude case is shown at a time.
 | Structural mode 1 / 2 / 3 (flutter chart only) | `--c-mode1…3` | `#4a3aa7` / `#008300` / `#52514e` | `#9085e9` / `#008300` / `#c3c2b7` |
 | Status good | `--good` | `#0ca30c` | `#0ca30c` |
 | Status critical (limit exceeded, structural limit lines) | `--critical` | `#d03b3b` | `#d03b3b` |
-| Supervisor mode meter (ordinal, efficient → emergency) | `--seq-1…4` | `#86b6ef → #0d366b` | `#184f95 → #86b6ef` |
+| Supervisor mode meter (ordinal, efficient → emergency; FT modes nominal → safe) | `--seq-1…4` | `#86b6ef → #0d366b` | `#184f95 → #86b6ef` |
+| On-board flutter-speed estimate (Guardian view only) | `--c-estimate` | `#1baf7a` | `#199e70` |
+| Fault-tolerant supervisors (figures only, `plots.FT_SUP_COLORS`): rules / rules+physics / rules+physics_v2 / llm / llm+physics / guardian / random / none / oracle | – | `#1baf7a` / `#eda100` / `#e34948` / `#e87ba4` / `#4a3aa7` / `#2a78d6` / `#c3c2b7` / `#898781` / `#0b0b0b` | (figures are light only) |
+
+Supervisor bars are drawn in that order (references none and oracle on the right). Validated 2026-09-30 on the
+adjacent pairs of each study's subset: CVD ΔE ≥ 9.1 and normal-vision ΔE ≥ 17.8 for the physics and guardian studies;
+the main study's rules/llm pair is 6.1 (deutan), legal only because a legend and the results tables accompany it.
 
 Status colours are **reserved**: never use them for a data series.
 
@@ -135,3 +142,33 @@ Status colours are **reserved**: never use them for a data series.
 
 Dual y-axes · rainbow colour maps · dashed gridlines · a value label on every point ·
 status colours on data · colour as the only cue · exaggerated deflections without a label.
+
+## 10. The Guardian view (`frontend/guardian.html`, `css/guardian.css`)
+
+A cockpit-style playback of one recorded fault-tolerant flight. Same tokens, type and layout as the simulator
+(300 px control panel + content column; stacks below 900 px; no horizontal scroll at phone width).
+
+- **Colours.** The wing takes the colour of the controller flying it (`--c-lqg` or `--c-neural`, with the
+  controller named in the lane label). The on-board estimate is `--c-estimate` (slot 3 aqua: LQR + rules never appears
+  in this view). Validated 2026-09-29 all-pairs with LQG and neural: light and dark pass; light aqua is below 3:1, so
+  every estimate carries a direct text label and the CSV/JSON downloads are the table view. Blue failed in dark mode
+  next to the LQG violet (CVD ΔE 1.9). Ground truth is recessive `--muted` (1.5 px). Plain flight traces (h, α, β) are
+  `--ink`; the command is `--muted` 1 px (the "thin = commanded" convention of the animation).
+- **Stat tiles** (airspeed, estimated flutter speed ± 1σ, margin, truth): hairline card on `--page`, 12 px label,
+  22 px proportional figure, 12 px sub-line that says what the number means.
+- **Flutter-margin gauge:** a neutral track with the airspeed as an ink triangle above it, the estimate as an aqua bar
+  with its ±1σ band, the healthy flutter speed as a hairline tick, and (toggle, labelled "simulation only") the true
+  value as a gray bar. Each marker has its own label row, so labels never collide; one scale per flight.
+- **Traffic lights** (predicted stability per mode): a card per mode with the 4-bar meter, controller and target
+  speed, a status icon + "Predicted stable / unstable" (`--good` / `--critical`, never colour alone) and ρ. The
+  current mode has an ink ring and a "current" tag; no estimate yet = muted circle icon + text.
+- **Mode timeline:** the ordinal ramp (`--seq-*`) as a strip under the scrubber, 2 px surface gaps between segments,
+  an ink tick at the fault onset, a critical wash after a structural failure, an ink playhead; legend below and an
+  `aria-label` that spells out the segments.
+- **Supervisor report:** the exact `format_ft_report` text in a scrollable, focusable block (system sans,
+  `pre-wrap`). **Decision log:** newest first, time · mode meter · outcome (Switched / Kept / Blocked / Not applied,
+  with icons) · reasoning; "keep" answers hidden behind a toggle.
+- **Optional diagnosis card:** shown only when the recording has a `diagnosis` field; numeric maps become neutral
+  (`--ink-2`) bars, everything else a key/value list.
+- **Motion:** playback starts automatically except under `prefers-reduced-motion`; default speed 1× (real time),
+  labelled in the speed selector.

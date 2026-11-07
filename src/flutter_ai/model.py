@@ -74,15 +74,21 @@ class DiscreteStateSpace:
     velocity: float
 
 
-def _T(p: WingParams) -> dict[int, float] | None:
-    return None if p.flap_hinge is None else theodorsen_T(p.flap_hinge, p.a)
+def _hinge(p: WingParams) -> float:
+    if p.flap_hinge is None:
+        raise ValueError(f"Preset '{p.name}' has no flap (flap_hinge is None); this needs the 3-DOF model")
+    return p.flap_hinge
+
+
+def _flap_T(p: WingParams) -> dict[int, float]:
+    return theodorsen_T(_hinge(p), p.a)
 
 
 def structural_matrices(p: WingParams) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if p.n_dof == 2:
         Ms = np.array([[p.mass, p.S_alpha], [p.S_alpha, p.I_alpha]])
         return Ms, np.diag([p.c_h, p.c_alpha]), np.diag([p.k_h, p.k_alpha])
-    coupling = p.I_beta + p.b * (p.flap_hinge - p.a) * p.S_beta
+    coupling = p.I_beta + p.b * (_hinge(p) - p.a) * p.S_beta
     Ms = np.array([
         [p.mass, p.S_alpha, p.S_beta],
         [p.S_alpha, p.I_alpha, coupling],
@@ -102,7 +108,7 @@ def aero_force_vector(p: WingParams, U: float) -> np.ndarray:
     kappa = p.cl_alpha / (2.0 * np.pi)
     e = [kappa * 2.0 * np.pi * p.rho * U * p.b, -kappa * 2.0 * np.pi * p.rho * U * p.b**2 * (p.a - p.x_ac)]
     if p.n_dof == 3:
-        e.append(kappa * p.flap_span_fraction * p.rho * U * p.b**2 * _T(p)[12])
+        e.append(kappa * p.flap_span_fraction * p.rho * U * p.b**2 * _flap_T(p)[12])
     return np.array(e)
 
 
@@ -111,7 +117,7 @@ def downwash_rows(p: WingParams, U: float) -> tuple[np.ndarray, np.ndarray]:
     dw_dq = [0.0, U]
     dw_dqdot = [1.0, p.b * (0.5 - p.a)]
     if p.n_dof == 3:  # a partial-span flap contributes in proportion to the span it covers
-        T, f = _T(p), p.flap_span_fraction
+        T, f = _flap_T(p), p.flap_span_fraction
         dw_dq.append(f * U * T[10] / np.pi)
         dw_dqdot.append(f * p.b * T[11] / (2.0 * np.pi))
     return np.array(dw_dq), np.array(dw_dqdot)
@@ -126,7 +132,7 @@ def noncirculatory_matrices(p: WingParams, U: float) -> tuple[np.ndarray, np.nda
         Cnc = k * U * np.array([[0.0, 1.0], [0.0, b * (0.5 - a)]])
         return Ma, Cnc, np.zeros((2, 2))
 
-    c, T = p.flap_hinge, _T(p)
+    c, T = _hinge(p), _flap_T(p)
     r = rho * b**2
     Ma = r * np.array([
         [np.pi, -np.pi * b * a, -b * T[1]],
