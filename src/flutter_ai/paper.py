@@ -38,8 +38,8 @@ CTRL_LABEL = {"open_loop": "Open loop", "lqr": "LQR", "lqg": "LQG", "neural": "N
 RESEARCH = PROJECT_ROOT / "docs" / "research"
 AUTHORS = ("Kukkadapu Sai Havish",)  # as printed on the paper; more authors are added here
 AFFILIATION = "Affiliation (to be decided)"  # individual or university: the owner's choice, still open
-TITLE = ("Fast models decide, the language model explains: fault-tolerant supervision for active flutter "
-         "suppression with a fair benchmark and a dwell-time guarantee")
+TITLE = ("Language-Model versus Learned and Physics-Based Supervision for Fault-Tolerant Active Flutter "
+         "Suppression")
 FIGURES = [  # (preset, file, caption)
     ("uav_flap", "fig1_flutter_vg.png", "Damping and frequency of the structural modes vs airspeed (default wing, open "
      "loop). Flutter where a mode's damping crosses zero."),

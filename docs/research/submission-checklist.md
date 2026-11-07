@@ -21,8 +21,8 @@
 
 ## Writing still to do (after the fault-tolerant results)
 
-- [x] **Decide the framing and title** (owner, 2026-11-07: Guardian-first). Title "Fast models decide, the language
-      model explains: ..." (`paper.TITLE`); abstract opening, research questions and contributions rewritten around the
+- [x] **Decide the framing and title** (owner, 2026-11-07: Guardian-first). Title (owner's pick, 2026-11-07) "Language-Model versus Learned and Physics-Based Supervision for Fault-Tolerant Active Flutter Suppression"
+      (`paper.TITLE`); abstract opening, research questions and contributions rewritten around the
       guardian, with the LLM-as-decision-maker results as the motivating negative result.
 - [ ] **Trim the abstract** to the venue's word limit (it is ~370 words; most venues allow 150-250).
 - [ ] Cite fault detection and isolation and flutter-margin monitoring work in §2 (placeholder marked *[Owner: ...]*;
