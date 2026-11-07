@@ -1,6 +1,8 @@
 # Fast models decide, the language model explains: fault-tolerant supervision for active flutter suppression with a fair benchmark and a dwell-time guarantee
 
-*Draft generated 2026-11-07T16:19+00:00 by `python -m flutter_ai paper` (flutter_ai 0.3.0, commit 230f313). Numbers and comparisons are computed from the result files; edit the prose in `src/flutter_ai/paper.py`, never the numbers here. Author list, affiliations and target venue: to be decided by the owner (see `submission-checklist.md`).*
+Kukkadapu Sai Havish · Affiliation (to be decided)
+
+*Draft generated 2026-11-07T16:50+00:00 by `python -m flutter_ai paper` (flutter_ai 0.3.0, commit 37b4158). Numbers and comparisons are computed from the result files; edit the prose in `src/flutter_ai/paper.py`, never the numbers here. Affiliation and target venue: to be decided by the author (see `submission-checklist.md`).*
 
 ## Abstract
 
@@ -342,7 +344,7 @@ On a validated, realistic flutter-suppression benchmark with fair baselines, a n
 
 ## Reproducibility
 
-Code: flutter_ai 0.3.0, commit 230f313. Commands: `tune`, `evaluate`, `robustness`, `ablations`, `llm-benchmark`, `ft-benchmark`, `ft-stability`, `validate`, then `paper`. Model files:
+Code: flutter_ai 0.3.0, commit 37b4158. Commands: `tune`, `evaluate`, `robustness`, `ablations`, `llm-benchmark`, `ft-benchmark`, `ft-stability`, `validate`, then `paper`. Model files:
 - `classical_tuning_bact.json` sha256 2b61fe0c2922
 - `classical_tuning_uav_flap.json` sha256 1a8c2ed52e6e
 - `classical_tuning_uav_section.json` sha256 328f9c1df71b

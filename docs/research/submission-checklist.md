@@ -8,7 +8,8 @@
 - [ ] **Advisor or mentor review** of the story and the draft (Phases.md 4.8 "done when").
 - [ ] **Choose the venue** (e.g. an AIAA SciTech Forum session on aeroelasticity or controls, a controls conference,
       or a journal) and check its page limit, template and deadline on the venue's own site.
-- [ ] **Author list and affiliations**; decide how AI assistance is acknowledged, following the venue's policy.
+- [ ] **Author list and affiliations** (author set 2026-11-07: Kukkadapu Sai Havish, `paper.AUTHORS`; affiliation open:
+      individually or through the university, `paper.AFFILIATION`); decide how AI assistance is acknowledged, following the venue's policy.
 - [x] Full texts checked for every reference with an open copy (2026-09-29; `references.bib` → `readstatus`,
       metadata confirmed against Crossref / arXiv). This corrected the draft: Papacharalampopoulos et al. 2026 *do*
       let the LLM choose the mode, so the architecture pattern is theirs (see related-work.md §1).
@@ -35,7 +36,7 @@
       to Overleaf) and `paper-ieee.pdf` (13 pages; local builds, gitignored). Another venue's template = change the
       preamble in `src/flutter_ai/paper_latex.py`.
 - [ ] **Cut to the venue's page limit** (IEEE conferences: usually 6-8 pages; the export is 13) and replace the
-      author placeholders.
+      affiliation placeholder.
 
 ## Evidence already in place
 

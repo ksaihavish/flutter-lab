@@ -17,7 +17,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from .paper import RESEARCH, build
+from .paper import AFFILIATION, AUTHORS, RESEARCH, build
 
 KEYWORDS = ("active flutter suppression, fault-tolerant control, supervisory control, fault diagnosis, "
             "aeroelasticity, large language models")
@@ -186,6 +186,8 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 last_heading = name
         elif mode == "skip":
             pass
+        elif kind == "p" and title and not abstract and mode == "body" and not body and b[1].startswith(AUTHORS[0]):
+            pass  # the author line: printed by \author below
         elif kind == "p" and title and not abstract and mode == "body" and not body and not note:
             note = b[1]  # the generator's note under the title -> a comment
         elif kind == "p" and mode == "abstract":
@@ -256,7 +258,8 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
         r"\extrafloats{100}",
         r"\begin{document}",
         rf"\title{{{tex_inline(title)}}}",
-        r"\author{\IEEEauthorblockN{Author names (to be decided)}\IEEEauthorblockA{Affiliation (to be decided)}}",
+        rf"\author{{\IEEEauthorblockN{{{tex_inline(', '.join(AUTHORS))}}}"
+        rf"\IEEEauthorblockA{{{tex_inline(AFFILIATION)}}}}}",
         r"\maketitle",
         r"\begin{abstract}", "\n\n".join(abstract), r"\end{abstract}",
         r"\begin{IEEEkeywords}", KEYWORDS, r"\end{IEEEkeywords}", "",

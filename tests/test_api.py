@@ -113,6 +113,7 @@ def test_paper_exports_to_ieee_latex(tmp_path):
     md = build(tmp_path / "draft.md", copy_figures=False, cite_markers=True).read_text(encoding="utf-8")
     tex, _ = markdown_to_ieee(md, tmp_path)  # raises on any character without a LaTeX mapping
     assert tex.startswith("%") and r"\documentclass[conference]{IEEEtran}" in tex
+    assert r"\IEEEauthorblockN{Kukkadapu Sai Havish}" in tex and "\nKukkadapu Sai Havish ·" not in tex
     assert r"\begin{abstract}" in tex and r"\section{Introduction}" in tex and r"\cite{" in tex
     assert r"\bibliography{references}" in tex and "⟦" not in tex and "(Hespanha & Morse" not in tex
     assert tex.count(r"\begin{table") == tex.count(r"\caption{") - tex.count(r"\begin{figure")

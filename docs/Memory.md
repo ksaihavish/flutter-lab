@@ -538,7 +538,7 @@ Faults the rejected answers named: servo_slew 4, none 1.
 
 1. The owner's items in `research/submission-checklist.md`: advisor review (send `paper-ieee.pdf` or `paper-draft.pdf`), venue, author
    list, library copies of the four paywalled papers, read Papacharalampopoulos et al. 2026, FDI / flutter-margin
-   monitoring citations for §2, trim the abstract (~370 words) and the paper (13 IEEE pages) to the venue limits, fill in authors in `paper_latex.py`, edit the generated prose and write
+   monitoring citations for §2, trim the abstract (~370 words) and the paper (13 IEEE pages) to the venue limits, decide the affiliation (individual or university; `paper.AFFILIATION`; author `paper.AUTHORS` = Kukkadapu Sai Havish), edit the generated prose and write
    the closing sentence of §10 (a suggestion is in the draft). Framing decided 2026-11-07 (Guardian-first).
 2. Optional, strengthens the paper: run `ft-benchmark` with a second LLM (`FLUTTER_AI_LLM_BACKEND=claude`, or another
    local model) to show the result is not specific to one model. Before claiming the Guardian's novelty, search

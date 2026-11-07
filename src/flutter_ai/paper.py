@@ -36,6 +36,8 @@ SCEN_LABEL = {"turbulence_patch": "Turbulence, 1.1 U_F", "discrete_gust": "Discr
 CTRL_LABEL = {"open_loop": "Open loop", "lqr": "LQR", "lqg": "LQG", "neural": "Neural",
               "lqr+rules": "LQR + rules", "neural+rules": "Neural + rules"}
 RESEARCH = PROJECT_ROOT / "docs" / "research"
+AUTHORS = ("Kukkadapu Sai Havish",)  # as printed on the paper; more authors are added here
+AFFILIATION = "Affiliation (to be decided)"  # individual or university: the owner's choice, still open
 TITLE = ("Fast models decide, the language model explains: fault-tolerant supervision for active flutter "
          "suppression with a fair benchmark and a dwell-time guarantee")
 FIGURES = [  # (preset, file, caption)
@@ -491,10 +493,11 @@ def build(out_path: Path | None = None, copy_figures: bool = True, cite_markers:
     w = L.append
 
     w(f"# {TITLE}\n")
+    w(f"{', '.join(AUTHORS)} · {AFFILIATION}\n")
     w(f"*Draft generated {datetime.now(timezone.utc).isoformat(timespec='minutes')} by `python -m flutter_ai paper` "
       f"(flutter_ai {__version__}, commit {_git_commit()}). Numbers and comparisons are computed from the result "
-      "files; edit the prose in `src/flutter_ai/paper.py`, never the numbers here. Author list, affiliations and "
-      "target venue: to be decided by the owner (see `submission-checklist.md`).*\n")
+      "files; edit the prose in `src/flutter_ai/paper.py`, never the numbers here. Affiliation and target "
+      "venue: to be decided by the author (see `submission-checklist.md`).*\n")
 
     # ------------------------------------------------------------ abstract
     w("## Abstract\n")
