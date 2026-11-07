@@ -149,10 +149,17 @@ def _table(header: list[str], rows: list[list[str]], caption: str, n: int) -> li
             *body, r"\bottomrule", r"\end{tabular}", r"\end{adjustbox}", rf"\end{{{env}}}", ""]
 
 
+def _raw(latex: str) -> tuple[str, str, str]:
+    return ("raw", latex, "")
+
+
 def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
     """The generated draft -> (IEEEtran LaTeX source, figure paths relative to ``base`` that it uses)."""
     blocks = _blocks(md)
-    title, note, body, abstract, figures = "", "", [], [], []
+    title, note = "", ""
+    body: list[tuple[str, str, str]] = []  # (kind, LaTeX, Markdown source of a paragraph)
+    abstract: list[str] = []
+    figures: list[str] = []
     mode = "body"  # body | abstract | skip
     last_heading, n_tab, n_fig = "", 0, 0
     i = 0
@@ -171,11 +178,11 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 elif text in ("References",) or text.startswith("Appendix"):
                     mode = "skip"
                 elif text != "Figures":
-                    body.append(("raw", (r"\section{" if _NUMBER.match(text) else r"\section*{") + tex_inline(name) + "}"))
+                    body.append(_raw((r"\section{" if _NUMBER.match(text) else r"\section*{") + tex_inline(name) + "}"))
                 last_heading = name
             elif mode == "body":
                 name = _NUMBER.sub("", text)
-                body.append(("raw", ("\\subsection{" if level == 3 else "\\subsubsection{") + tex_inline(name) + "}"))
+                body.append(_raw(("\\subsection{" if level == 3 else "\\subsubsection{") + tex_inline(name) + "}"))
                 last_heading = name
         elif mode == "skip":
             pass
@@ -191,7 +198,7 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 figures.append(src)
                 wide = _png_ratio(base / src) > 1.9
                 env, width = ("figure*", r"\textwidth") if wide else ("figure", r"\columnwidth")
-                body.append(("raw", "\n".join([rf"\begin{{{env}}}[!t]", r"\centering",
+                body.append(_raw("\n".join([rf"\begin{{{env}}}[!t]", r"\centering",
                                                rf"\includegraphics[width={width}]{{{src}}}",
                                                rf"\caption{{{tex_inline(m.group(1))}}}", rf"\label{{fig:{n_fig}}}",
                                                rf"\end{{{env}}}", ""])))
@@ -199,7 +206,7 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 continue
             body.append(("p", tex_inline(b[1]), b[1]))
         elif kind == "ul":
-            body.append(("raw", "\n".join(_itemize(b[1]))))
+            body.append(_raw("\n".join(_itemize(b[1]))))
         elif kind == "table":
             n_tab += 1
             prev = body[-1] if body else None
@@ -212,10 +219,10 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 caption = tex_inline(prev[2].split("**")[1].rstrip("."))
             else:
                 caption = tex_inline(last_heading)
-            body.append(("raw", "\n".join(_table(b[1], b[2], caption, n_tab))))
+            body.append(_raw("\n".join(_table(b[1], b[2], caption, n_tab))))
         elif kind == "img":  # an image without the generator's caption line
             figures.append(b[2])
-            body.append(("raw", rf"\begin{{figure}}[!t]\centering\includegraphics[width=\columnwidth]{{{b[2]}}}\end{{figure}}"))
+            body.append(_raw(rf"\begin{{figure}}[!t]\centering\includegraphics[width=\columnwidth]{{{b[2]}}}\end{{figure}}"))
         i += 1
 
     text_body = "\n\n".join(x[1] for x in body)
