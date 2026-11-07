@@ -32,7 +32,8 @@ Last updated: **2026-11-07** · Version **0.3.0** · Phase: 4 done (fair baselin
   https://claude.ai/code/artifact/3e3770fd-cff5-4e44-9659-3f16cf23ba0b (2026-10-01).
 - **Housekeeping 2026-09-30:** all agent worktrees and `flutter-lab-exp` removed; branches
   `worktree-agent-a20cf8ee09288bbd4` and `worktree-agent-a689a0e68a75a3835` kept (unmerged WIP drafts, superseded by
-  commit 1c59694). `physics-advisor` pushed to GitHub as **PR #9** (supersedes PR #8, closed 2026-09-30).
+  commit 1c59694). `physics-advisor` pushed to GitHub as **PR #9** (supersedes PR #8, closed 2026-09-30);
+  **PR #9 merged into `main` on 2026-11-07** (merge commit 2c80743, CI green on e78efbc). Work continues on `main`.
 
 ## 2. Current state of each part
 
@@ -54,7 +55,7 @@ Last updated: **2026-11-07** · Version **0.3.0** · Phase: 4 done (fair baselin
 | Web app | ✅ | Vanilla JS; flap drawing; delay input; per-preset policies. **Guardian view** (`/guardian`, 2026-09-29): one recorded fault-tolerant flight (uav_flap; none / rules / rules + physics / **guardian** (default since 2026-09-30: estimator v2 + diagnoser, same flight as ft-benchmark, per-mode admitted/vetoed from its physics verdict); no LLM), played back with the on-board flutter-margin estimate, true flutter speed (simulation-only toggle), per-mode predicted stability, report text and decision log; `api/guardian.py`, `fault_tolerance/recording.py`, `tests/test_guardian_api.py` |
 | Dataset intake | ✅ format + `check-data` | No time-history dataset yet; spec in `data/README.md` |
 | BACT preset + validation | ✅ 2026-09-29 | Flutter freq 3.99 Hz vs ~4 Hz measured (−0.2 %); flutter q 183 vs ~148 psf (+24 %); NASA's model 150.8 psf. Neural policy `neural_policy_bact.npz` trained |
-| Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker |
+| Git/GitHub | ✅ | PR #1 (rebuild) merged 2026-09-28; repo description/topics updated. PR #2 adds CI/pre-commit/Docker. PR #9 (Phase 4 complete) merged 2026-11-07; no open PRs |
 | Automation | ✅ | GitHub Actions CI (lint, tests Linux+Windows, benchmark artifact, Docker build), pre-commit, Dependabot |
 
 ## 3. Validation evidence (all automated in `tests/test_physics.py`)
