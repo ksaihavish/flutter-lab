@@ -35,7 +35,7 @@ python -m flutter_ai serve
 |---------|--------------|
 | `start.bat` / `python -m flutter_ai serve` | Web app: animated wing with a moving flap, controller comparison, charts, flutter diagram, supervisor log, CSV export |
 | `http://127.0.0.1:8000/guardian` (same server) | Guardian live view: inject a mid-flight fault, fly it with no supervisor / rules / rules + physics / the Guardian (learned diagnosis + physics, the best supervisor in the study), and play back the damaged wing, the on-board flutter-margin estimate (with the true value as a simulation-only toggle), per-mode predicted stability, the supervisor's report and every decision |
-| `start.bat -Test` / `python -m pytest` | 179 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
+| `start.bat -Test` / `python -m pytest` | 180 tests, including physics validation against textbook values, an independent p-k method and thin-airfoil theory |
 | `python -m flutter_ai evaluate --preset uav_flap` | Full benchmark (20 seeds, paired statistics) → `outputs/uav_flap/results.json` + figures (~2 min) |
 | `python -m flutter_ai analyze --preset uav_flap` | Flutter speed, p-k cross-validation, V-g diagram |
 | `python -m flutter_ai train --preset uav_flap` | Retrain the neural policy through the differentiable physics (~5 min, CPU); `--variant` trains ablations |
@@ -48,7 +48,7 @@ python -m flutter_ai serve
 | `python -m flutter_ai validate` | Compare the model with NASA's BACT wind-tunnel flutter measurements → `outputs/validation/bact.json` |
 | `python -m flutter_ai check-data data/<folder>` | Validate an experimental dataset and compare predicted vs measured flutter speed ([data/README.md](data/README.md)) |
 | `python -m flutter_ai identify data/<folder>` | Identify physical parameters (frequencies, damping, ...) from a dataset's time histories |
-| `python -m flutter_ai paper [--pdf]` | Regenerate `docs/research/paper-draft.md` from the result files (no hand-typed numbers); `--pdf` also prints `paper-draft.pdf` with a local Chrome/Edge |
+| `python -m flutter_ai paper [--pdf] [--ieee]` | Regenerate `docs/research/paper-draft.md` from the result files (no hand-typed numbers); `--pdf` also prints `paper-draft.pdf` with a local Chrome/Edge; `--ieee` exports IEEEtran LaTeX (`docs/research/ieee/`, an Overleaf zip) and compiles `paper-ieee.pdf` if Tectonic is installed |
 
 Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, from published data), `uav_section` (2-DOF),
 `hodges_pierce` (textbook validation case).
@@ -69,7 +69,7 @@ Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, fro
   a mode (efficient / balanced / aggressive / emergency). It is either rule-based, or an LLM (local via Ollama, or Claude)
   with schema-constrained output and automatic fallback. The LLM never commands the flap directly.
 
-**Current findings** (generated from `outputs/uav_flap/*.json`, 2026-09-29, 20 seeds; details in [docs/Memory.md](docs/Memory.md)):
+**Current findings** (generated from `outputs/uav_flap/*.json`, 2026-09-29, 20 seeds):
 - Turbulence, RMS plunge: LQR 2.74 ± 0.32 mm, LQG 1.12 ± 0.10 mm, neural 2.29 ± 0.23 mm. The neural policy beats plain
   LQR (-17 %, Wilcoxon p < 0.001) but not the turbulence-aware LQG
   (+104 %); LQG has the lowest cost J in 4 of 4 scenarios.
@@ -108,15 +108,12 @@ openly and is the next modelling target.
 | [docs/PRD.md](docs/PRD.md) | What we're building, for whom, research questions |
 | [docs/Architecture.md](docs/Architecture.md) | System flow, physics, modules, folder structure, tech stack |
 | [docs/Rules.md](docs/Rules.md) | Integrity rules, libraries, error handling, LLM safety, AI-assistant rules |
-| [docs/Phases.md](docs/Phases.md) | Roadmap: paper → showcase app → hardening → commercial |
 | [docs/Design.md](docs/Design.md) | Colours, theme, typography, chart and animation rules |
-| [docs/Memory.md](docs/Memory.md) | Current state, latest results, decisions log, next steps |
-| [docs/Study-Guide.md](docs/Study-Guide.md) | **What to study to fully understand and own this project**: 8 tracks, exercises, self-checks, 16-week plan |
 | [data/README.md](data/README.md) | Which datasets to collect and the file format |
-| [docs/research/](docs/research/) | Audit of the original code; corrected paper outline |
+| [docs/research/](docs/research/) | Pre-registered plan of the physics-informed test, the script that ran it, and the bibliography |
 
 ## Project history
 
-The original research scripts are preserved in [`legacy/`](legacy/). They contained
-critical bugs; see [docs/research/audit-2026-09.md](docs/research/audit-2026-09.md). **Do
-not cite results from the legacy files.**
+An earlier prototype of this project had critical bugs (an untrained network that produced NaNs, failures
+masked in the metrics, and an LLM whose output never reached the controller). It was rebuilt from scratch in
+September 2026 and is not part of this repository; no result from it is used.

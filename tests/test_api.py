@@ -88,8 +88,9 @@ def test_paper_draft_is_generated_from_result_files(tmp_path):
     path = build(tmp_path / "draft.md", copy_figures=False)
     text = path.read_text(encoding="utf-8")
     assert text.startswith("# ") and "## Abstract" in text
-    assert "## 7. Results" in text and "### 7.5 Fault-tolerant supervision" in text and "## References" in text
-    assert "(Hespanha & Morse 1999)" in text or "ft_stability" not in text  # citations render as author-year
+    assert "## 8. Results" in text and "### 8.4 Fault-tolerant supervision" in text and "## References" in text
+    assert "[1]" in text and "- [1] " in text  # numbered citations, numbered reference list
+    assert (tmp_path / "cover-letter.md").exists() or "Results pending" in text
 
 
 def test_paper_markdown_renders_to_html(tmp_path):
@@ -102,6 +103,31 @@ def test_paper_markdown_renders_to_html(tmp_path):
     assert "<strong>bold</strong>" in page and "<code>code</code>" in page and "5 &lt; 6" in page
     assert page.count("<ul>") == 2 and page.count("</ul>") == 2
     assert "<th>x</th>" in page and "<td>2</td>" in page and '<img src="missing.png"' in page
+
+
+def test_paper_exports_to_ieee_latex(tmp_path):
+    from flutter_ai.paper import _holm, build
+    from flutter_ai.paper_latex import markdown_to_latex, tex_inline
+
+    assert tex_inline("50 % of `a_b` & **x** ⟦cite:k1,k2⟧ at 1.1 U_F") == \
+        r"50 \% of \texttt{a\_b} \& \textbf{x} \cite{k1,k2} at 1.1 $U_F$"
+    md = build(tmp_path / "draft.md", copy_figures=False, cite_markers=True).read_text(encoding="utf-8")
+    assert tex_inline("at $U_F$ & 5 %") == r"at $U_F$ \& 5 \%"  # math passes through unescaped
+    assert [round(x, 9) for x in _holm([0.01, 0.04, 0.03])] == [0.03, 0.06, 0.06]
+    journal, _ = markdown_to_latex(md, tmp_path, springer=True)  # single column, numbered references
+    assert r"{article}" in journal and "rammohanb@rvu.edu.in" in journal and r"\bibitem{" in journal
+    from flutter_ai.paper import springer_ref
+
+    assert springer_ref({"type": "inproceedings", "author": "Hespanha, Jo\\~ao P. and Morse, A. Stephen",
+                         "title": "Stability", "booktitle": "Proc. CDC", "volume": "3", "pages": "2655--2660",
+                         "year": "1999", "doi": "10.1/x"}) == \
+        "Hespanha JP, Morse AS (1999) Stability. In: Proc. CDC, vol 3, pp 2655–2660. https://doi.org/10.1/x"
+    tex, _ = markdown_to_latex(md, tmp_path)  # raises on any character without a LaTeX mapping
+    assert tex.startswith("%") and r"\documentclass[conference]{IEEEtran}" in tex
+    assert r"\IEEEauthorblockN{Kukkadapu Sai Havish, Rammohan B}" in tex and "\nKukkadapu Sai Havish ·" not in tex
+    assert r"\begin{abstract}" in tex and r"\section{Introduction}" in tex and r"\cite{" in tex
+    assert r"\bibliography{references}" in tex and "⟦" not in tex and "(Hespanha & Morse" not in tex
+    assert tex.count(r"\begin{table") == tex.count(r"\caption{") - tex.count(r"\begin{figure")
 
 
 def test_fault_tolerance_discussion_is_computed_from_results():

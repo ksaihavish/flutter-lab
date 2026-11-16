@@ -22,7 +22,8 @@ CSS = """
 body { font-family: "Times New Roman", Georgia, serif; font-size: 10.5pt; line-height: 1.38; color: #111;
        background: #fff; max-width: 175mm; margin: 0 auto; }
 h1 { font-size: 17pt; line-height: 1.25; text-align: center; margin: 0 0 6pt; }
-h1 + p { text-align: center; font-size: 8.5pt; color: #444; margin-bottom: 14pt; }
+h1 + p { text-align: center; font-size: 11pt; margin-bottom: 6pt; }
+h1 + p + p { text-align: center; font-size: 8.5pt; color: #444; margin-bottom: 14pt; }
 h2 { font-size: 12.5pt; margin: 16pt 0 5pt; border-bottom: 0.6pt solid #999; padding-bottom: 2pt; }
 h3 { font-size: 11pt; margin: 12pt 0 4pt; }
 p { margin: 0 0 7pt; text-align: justify; hyphens: auto; }
