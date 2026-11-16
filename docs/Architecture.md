@@ -101,7 +101,6 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 ├── .github/                           CI workflow (lint, tests Linux+Windows, benchmark, Docker) + Dependabot
 ├── .pre-commit-config.yaml            ruff + hygiene hooks run before each commit
 ├── pyproject.toml                     package, dependencies, extras (train, llm, dev)
-├── CLAUDE.md                          entry point for AI assistants
 ├── .env.example                       ANTHROPIC_API_KEY etc. (copy to .env; git-ignored)
 ├── src/flutter_ai/                    the Python package (§3)
 ├── frontend/                          static web app, no build step: index.html (simulator), guardian.html (Guardian
@@ -112,8 +111,7 @@ M_s q̈ + C_s q̇ + K_s q = f_aero + B_q u           (per unit span; h down, α 
 ├── data/                              datasets (README.md = what to collect + format; template_synthetic/)
 ├── outputs/<preset>/                  generated: results.json, fig1…fig9 (git-ignored)
 ├── tests/                             pytest: physics, control, supervisor, data, API
-├── docs/                              PRD, Architecture, Rules, Phases, Design, Memory, research/
-└── legacy/                            original scripts, outputs and docs (read-only history)
+└── docs/                              PRD, Architecture, Rules, Design, research/
 ```
 
 ## 5. Tech stack

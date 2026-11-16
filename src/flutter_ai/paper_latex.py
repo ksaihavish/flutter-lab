@@ -1,7 +1,8 @@
-"""Export the generated paper draft to IEEE conference LaTeX (IEEEtran) for Overleaf.
+"""Export the generated paper draft to LaTeX for Overleaf: IEEE conference (IEEEtran) or a single-column article
+for Springer journals (IJASS: numbered references, flat folder, figures named Fig1.png ...).
 
-`python -m flutter_ai paper --ieee` writes ``docs/research/ieee/`` (paper.tex, references.bib, figures/) and
-``docs/research/paper-ieee-overleaf.zip`` (upload it to Overleaf: New project -> Upload project). Citations become
+`python -m flutter_ai paper --ieee` / `--springer` writes ``docs/research/<style>/`` (paper.tex, references.bib,
+figures) and ``docs/research/paper-<style>-overleaf.zip`` (Overleaf: New project -> Upload project). Citations become
 numbered ``\\cite{}`` entries from references.bib; numbers still come only from the result files (via paper.build).
 Compile with pdfLaTeX + BibTeX. Standard library only.
 """
@@ -17,10 +18,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from .paper import AFFILIATION, AUTHORS, RESEARCH, build
-
-KEYWORDS = ("active flutter suppression, fault-tolerant control, supervisory control, fault diagnosis, "
-            "aeroelasticity, large language models")
+from .paper import AFFILIATION, AFFILIATIONS, AUTHORS, CORRESPONDING, KEYWORDS, RESEARCH, _bib, build, springer_ref
 
 # Non-ASCII characters the draft uses -> LaTeX (declared in the preamble for pdfLaTeX).
 UNICODE = {
@@ -37,6 +35,7 @@ _SPECIAL = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": 
 _TABLE_SEP = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
 _IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
 _FIG_CAPTION = re.compile(r"^\*\*Figure \d+\.\*\*\s*(.*)$")
+_TAB_CAPTION = re.compile(r"^\*\*Table \d+\.\*\*\s*(.*)$")
 _NUMBER = re.compile(r"^\d+(\.\d+)*\.?\s+")
 
 
@@ -45,9 +44,12 @@ def _esc(text: str) -> str:
 
 
 def tex_inline(text: str) -> str:
-    """Markdown inline text -> LaTeX (escaping, code, bold, italic, quotes, U_F, citation markers)."""
+    """Markdown inline text -> LaTeX (escaping, code, bold, italic, quotes, U_F, citation markers); $math$ is kept."""
     out = []
-    for part in re.split(r"(`[^`]+`)", text):
+    for part in re.split(r"(`[^`]+`|\$[^$\n]+\$)", text):
+        if part.startswith("$") and part.endswith("$") and len(part) > 1:
+            out.append(part)
+            continue
         if part.startswith("`") and part.endswith("`") and len(part) > 1:
             out.append(r"\texttt{" + _esc(part[1:-1]) + "}")
             continue
@@ -139,9 +141,9 @@ def _itemize(items: list[tuple[int, str]]) -> list[str]:
     return out
 
 
-def _table(header: list[str], rows: list[list[str]], caption: str, n: int) -> list[str]:
-    wide = len(header) >= 5 or max(len(" ".join(r)) for r in [header, *rows]) > 70
-    env = "table*" if wide else "table"
+def _table(header: list[str], rows: list[list[str]], caption: str, n: int, springer: bool = False) -> list[str]:
+    wide = not springer and (len(header) >= 5 or max(len(" ".join(r)) for r in [header, *rows]) > 70)
+    env = "table*" if wide else ("sidewaystable" if springer and len(header) > 12 else "table")
     body = [" & ".join(rf"\textbf{{{tex_inline(c)}}}" for c in header) + r" \\", r"\midrule"]
     body += [" & ".join(tex_inline(c) for c in r) + r" \\" for r in rows]
     return [rf"\begin{{{env}}}[{'!tp' if wide else '!htbp'}]", r"\centering\footnotesize", rf"\caption{{{caption}}}", rf"\label{{tab:{n}}}",
@@ -153,13 +155,16 @@ def _raw(latex: str) -> tuple[str, str, str]:
     return ("raw", latex, "")
 
 
-def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
-    """The generated draft -> (IEEEtran LaTeX source, figure paths relative to ``base`` that it uses)."""
+def markdown_to_latex(md: str, base: Path, springer: bool = False) -> tuple[str, list[tuple[str, str]]]:
+    """The generated draft -> (LaTeX source, [(figure path relative to ``base``, its name in the LaTeX)]).
+    IEEEtran conference layout by default; ``springer`` gives a single-column article with numbered references
+    and figures named Fig1.png ... next to the .tex (the IJASS guidelines ask for no subfolders)."""
     blocks = _blocks(md)
     title, note = "", ""
     body: list[tuple[str, str, str]] = []  # (kind, LaTeX, Markdown source of a paragraph)
     abstract: list[str] = []
-    figures: list[str] = []
+    figures: list[tuple[str, str]] = []
+    keywords = KEYWORDS
     mode = "body"  # body | abstract | skip
     last_heading, n_tab, n_fig = "", 0, 0
     i = 0
@@ -191,20 +196,30 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
         elif kind == "p" and title and not abstract and mode == "body" and not body and not note:
             note = b[1]  # the generator's note under the title -> a comment
         elif kind == "p" and mode == "abstract":
-            abstract.append(tex_inline(b[1]))
+            if b[1].startswith("**Keywords:**"):
+                keywords = tex_inline(b[1].split("**Keywords:**", 1)[1].strip())
+            else:
+                abstract.append(tex_inline(b[1]))
+        elif kind == "p" and b[1].startswith("$$") and b[1].endswith("$$"):  # display equation, \tag{n} inside
+            body.append(_raw("\\begin{equation}\n" + b[1][2:-2].strip() + "\n\\end{equation}"))
         elif kind == "p":
             m = _FIG_CAPTION.match(b[1])
             if m and i + 1 < len(blocks) and blocks[i + 1][0] == "img":
-                src = blocks[i + 1][2]
                 n_fig += 1
-                figures.append(src)
-                wide = _png_ratio(base / src) > 1.9
-                env, width = ("figure*", r"\textwidth") if wide else ("figure", r"\columnwidth")
-                body.append(_raw("\n".join([rf"\begin{{{env}}}[!t]", r"\centering",
-                                               rf"\includegraphics[width={width}]{{{src}}}",
-                                               rf"\caption{{{tex_inline(m.group(1))}}}", rf"\label{{fig:{n_fig}}}",
-                                               rf"\end{{{env}}}", ""])))
-                i += 2
+                srcs = []
+                i += 1
+                while i < len(blocks) and blocks[i][0] == "img":  # one image per panel
+                    srcs.append(blocks[i][2])
+                    i += 1
+                names = [f"Fig{n_fig}{'abcd'[q] if len(srcs) > 1 else ''}{Path(s).suffix}" if springer else s
+                         for q, s in enumerate(srcs)]
+                figures.extend(zip(srcs, names))
+                env = "figure*" if not springer and (len(srcs) > 1 or _png_ratio(base / srcs[0]) > 1.9) else "figure"
+                width = 0.98 / len(srcs) if len(srcs) > 1 else (0.85 if springer else 1.0)
+                body.append(_raw("\n".join([
+                    rf"\begin{{{env}}}[{'!htbp' if springer else '!t'}]", r"\centering",
+                    r"\hfill".join(rf"\includegraphics[width={width:.2f}\linewidth]{{{name}}}" for name in names),
+                    rf"\caption{{{tex_inline(m.group(1))}}}", rf"\label{{fig:{n_fig}}}", rf"\end{{{env}}}", ""])))
                 continue
             body.append(("p", tex_inline(b[1]), b[1]))
         elif kind == "ul":
@@ -212,7 +227,11 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
         elif kind == "table":
             n_tab += 1
             prev = body[-1] if body else None
-            if prev and prev[0] == "p" and len(prev[2]) <= 260:
+            numbered = _TAB_CAPTION.match(prev[2]) if prev and prev[0] == "p" else None
+            if numbered:  # the generator's own "**Table n.** caption" line
+                body.pop()
+                caption = tex_inline(numbered.group(1))
+            elif prev and prev[0] == "p" and len(prev[2]) <= 260:
                 body.pop()
                 caption = prev[1].rstrip(":").rstrip()
                 if len(prev[2]) < 30:  # a bare preset name: say which study it belongs to
@@ -221,23 +240,56 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
                 caption = tex_inline(prev[2].split("**")[1].rstrip("."))
             else:
                 caption = tex_inline(last_heading)
-            body.append(_raw("\n".join(_table(b[1], b[2], caption, n_tab))))
+            body.append(_raw("\n".join(_table(b[1], b[2], caption, n_tab, springer))))
         elif kind == "img":  # an image without the generator's caption line
-            figures.append(b[2])
+            figures.append((b[2], b[2]))
             body.append(_raw(rf"\begin{{figure}}[!t]\centering\includegraphics[width=\columnwidth]{{{b[2]}}}\end{{figure}}"))
         i += 1
 
     text_body = "\n\n".join(x[1] for x in body)
-    doc_text = title + " ".join(abstract) + text_body
+    bibliography = [r"\bibliographystyle{IEEEtran}", r"\bibliography{references}"]
+    if springer:  # IJASS: Springer basic style, written out here so no .bst file is needed
+        bib = _bib(RESEARCH / "references.bib")
+        keys = list(dict.fromkeys(k for m in re.findall(r"⟦cite:([^⟧]+)⟧", md) for k in m.split(",")))
+        bibliography = [r"\begin{thebibliography}{99}"]
+        for k in keys:
+            ref = springer_ref(bib[k])
+            url = re.search(r" (https://\S+)$", ref)
+            bibliography.append(rf"\bibitem{{{k}}} " + (tex_inline(ref[:url.start()]) + rf" \url{{{url.group(1)}}}"
+                                                       if url else tex_inline(ref)))
+        bibliography.append(r"\end{thebibliography}")
+    doc_text = title + " ".join(abstract) + text_body + "".join(bibliography)
     unknown = sorted({c for c in doc_text if ord(c) > 127 and c not in UNICODE and c not in NATIVE})
     if unknown:
         raise ValueError(f"No LaTeX mapping for characters {unknown}; add them to paper_latex.UNICODE")
     declares = [rf"\newunicodechar{{{c}}}{{{v}}}" for c, v in UNICODE.items() if c in doc_text]
     comment = "\n".join("% " + line for line in re.findall(r".{1,100}(?:\s|$)", note.strip("*"))) if note else ""
+    if springer:
+        marks = [str(q + 1) + ("*" if a == CORRESPONDING[0] else "") for q, a in enumerate(AUTHORS)]
+        cls = [r"\documentclass[11pt,a4paper]{article}", r"\usepackage[margin=25mm]{geometry}",
+               r"\usepackage[numbers,sort&compress]{natbib}", r"\usepackage{rotating}"]
+        front = [rf"\title{{{tex_inline(title)}}}",
+                 r"\author{" + ", ".join(rf"{tex_inline(a)}$^{{{mk}}}$" for a, mk in zip(AUTHORS, marks)) + r"\\[1.5ex]"
+                 + "".join(rf"{{\small $^{{{q + 1}}}${tex_inline(aff)}}}\\" for q, aff in enumerate(AFFILIATIONS))
+                 + rf"[1ex]{{\small $^{{*}}$Corresponding author. E-mail: \texttt{{{_esc(CORRESPONDING[1])}}}}}}}",
+                 r"\date{}", r"\maketitle", r"\begin{abstract}", "\n\n".join(abstract), r"\end{abstract}",
+                 r"\noindent\textbf{Keywords:} " + keywords, ""]
+    else:
+        cls = [r"\documentclass[conference]{IEEEtran}", r"\usepackage{cite}",
+               r"% Arabic section numbers, so the text's ``Section 8.5'' references stay right.",
+               r"\renewcommand\thesection{\arabic{section}}", r"\providecommand\thesectiondis{}",
+               r"\renewcommand\thesectiondis{\arabic{section}.}",
+               r"\renewcommand\thesubsection{\thesection.\arabic{subsection}}", r"\providecommand\thesubsectiondis{}",
+               r"\renewcommand\thesubsectiondis{\thesection.\arabic{subsection}}"]
+        front = [rf"\title{{{tex_inline(title)}}}",
+                 rf"\author{{\IEEEauthorblockN{{{tex_inline(', '.join(AUTHORS))}}}"
+                 rf"\IEEEauthorblockA{{{tex_inline(AFFILIATION)}}}}}",
+                 r"\maketitle", r"\begin{abstract}", "\n\n".join(abstract), r"\end{abstract}",
+                 r"\begin{IEEEkeywords}", keywords, r"\end{IEEEkeywords}", ""]
     tex = "\n".join([
-        "% Generated by `python -m flutter_ai paper --ieee` from docs/research/paper-draft.md's generator.",
+        "% Generated by `python -m flutter_ai paper --ieee | --springer` from the generator of paper-draft.md.",
         "% Do not edit numbers here; edit prose in src/flutter_ai/paper.py and re-export.", comment,
-        r"\documentclass[conference]{IEEEtran}",
+        *cls,
         r"\usepackage{iftex}",
         r"\ifPDFTeX  % pdfLaTeX (Overleaf's default)",
         r"  \usepackage[utf8]{inputenc}\usepackage[T1]{fontenc}\usepackage{textcomp}",
@@ -248,23 +300,13 @@ def markdown_to_ieee(md: str, base: Path) -> tuple[str, list[str]]:
         r"\fi",
         r"\usepackage{newunicodechar}",
         r"\usepackage{amsmath,amssymb}", r"\usepackage{graphicx}", r"\usepackage{booktabs}",
-        r"\usepackage{adjustbox}", r"\usepackage{cite}", r"\usepackage{url}",
+        r"\usepackage{adjustbox}", r"\usepackage{url}",
         *declares,
-        r"% Arabic section numbers, so the text's ``Section 7.5'' references stay right.",
-        r"\renewcommand\thesection{\arabic{section}}", r"\providecommand\thesectiondis{}",
-        r"\renewcommand\thesectiondis{\arabic{section}.}",
-        r"\renewcommand\thesubsection{\thesection.\arabic{subsection}}", r"\providecommand\thesubsectiondis{}",
-        r"\renewcommand\thesubsectiondis{\thesection.\arabic{subsection}}",
         r"\extrafloats{100}",
         r"\begin{document}",
-        rf"\title{{{tex_inline(title)}}}",
-        rf"\author{{\IEEEauthorblockN{{{tex_inline(', '.join(AUTHORS))}}}"
-        rf"\IEEEauthorblockA{{{tex_inline(AFFILIATION)}}}}}",
-        r"\maketitle",
-        r"\begin{abstract}", "\n\n".join(abstract), r"\end{abstract}",
-        r"\begin{IEEEkeywords}", KEYWORDS, r"\end{IEEEkeywords}", "",
+        *front,
         text_body, "",
-        r"\bibliographystyle{IEEEtran}", r"\bibliography{references}",
+        *bibliography,
         r"\end{document}", ""])
     return tex, figures
 
@@ -286,31 +328,37 @@ def find_tectonic() -> str | None:
     return None
 
 
-def compile_ieee(tex_path: Path, pdf_path: Path | None = None, timeout_s: float = 600.0) -> Path | None:
+def compile_latex(tex_path: Path, pdf_path: Path | None = None, timeout_s: float = 600.0) -> Path | None:
     """Compile with Tectonic (XeLaTeX + BibTeX) to ``pdf_path``; None if Tectonic is not installed."""
     exe = find_tectonic()
     if exe is None:
         return None
     subprocess.run([exe, "-X", "compile", tex_path.name], cwd=tex_path.parent, check=True, timeout=timeout_s,
                    capture_output=True)
-    pdf_path = Path(pdf_path or RESEARCH / "paper-ieee.pdf")
+    pdf_path = Path(pdf_path or RESEARCH / f"paper-{tex_path.parent.name}.pdf")
     shutil.copyfile(tex_path.with_suffix(".pdf"), pdf_path)
     return pdf_path
 
 
-def export_ieee(out_dir: Path | None = None, zip_path: Path | None = None) -> Path:
+def export_latex(springer: bool = False, out_dir: Path | None = None, zip_path: Path | None = None) -> Path:
     """Write paper.tex + references.bib + figures to ``out_dir`` and an Overleaf zip; return the .tex path."""
-    out_dir = Path(out_dir or RESEARCH / "ieee")
-    zip_path = Path(zip_path or RESEARCH / "paper-ieee-overleaf.zip")
+    style = "springer" if springer else "ieee"
+    out_dir = Path(out_dir or RESEARCH / style)
+    zip_path = Path(zip_path or RESEARCH / f"paper-{style}-overleaf.zip")
     with tempfile.TemporaryDirectory() as tmp:
         md = build(Path(tmp) / "paper.md", copy_figures=True, cite_markers=True).read_text(encoding="utf-8")
-    tex, figures = markdown_to_ieee(md, RESEARCH)
+    tex, figures = markdown_to_latex(md, RESEARCH, springer)
     if (out_dir / "figures").exists():  # drop stale figures; other files are overwritten in place
         shutil.rmtree(out_dir / "figures")
-    (out_dir / "figures").mkdir(parents=True)
-    for rel in figures:
-        shutil.copyfile(RESEARCH / rel, out_dir / rel)
-    _export_bib(RESEARCH / "references.bib", out_dir / "references.bib")
+    for old in out_dir.glob("Fig*.png"):
+        old.unlink()
+    for rel, name in figures:
+        (out_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(RESEARCH / rel, out_dir / name)
+    if springer:  # the reference list is inside paper.tex
+        (out_dir / "references.bib").unlink(missing_ok=True)
+    else:
+        _export_bib(RESEARCH / "references.bib", out_dir / "references.bib")
     tex_path = out_dir / "paper.tex"
     tex_path.write_text(tex, encoding="utf-8")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:

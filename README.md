@@ -69,7 +69,7 @@ Presets: `uav_flap` (3-DOF, default), `bact` (NASA's BACT wind-tunnel model, fro
   a mode (efficient / balanced / aggressive / emergency). It is either rule-based, or an LLM (local via Ollama, or Claude)
   with schema-constrained output and automatic fallback. The LLM never commands the flap directly.
 
-**Current findings** (generated from `outputs/uav_flap/*.json`, 2026-09-29, 20 seeds; details in [docs/Memory.md](docs/Memory.md)):
+**Current findings** (generated from `outputs/uav_flap/*.json`, 2026-09-29, 20 seeds):
 - Turbulence, RMS plunge: LQR 2.74 ± 0.32 mm, LQG 1.12 ± 0.10 mm, neural 2.29 ± 0.23 mm. The neural policy beats plain
   LQR (-17 %, Wilcoxon p < 0.001) but not the turbulence-aware LQG
   (+104 %); LQG has the lowest cost J in 4 of 4 scenarios.
@@ -108,15 +108,12 @@ openly and is the next modelling target.
 | [docs/PRD.md](docs/PRD.md) | What we're building, for whom, research questions |
 | [docs/Architecture.md](docs/Architecture.md) | System flow, physics, modules, folder structure, tech stack |
 | [docs/Rules.md](docs/Rules.md) | Integrity rules, libraries, error handling, LLM safety, AI-assistant rules |
-| [docs/Phases.md](docs/Phases.md) | Roadmap: paper → showcase app → hardening → commercial |
 | [docs/Design.md](docs/Design.md) | Colours, theme, typography, chart and animation rules |
-| [docs/Memory.md](docs/Memory.md) | Current state, latest results, decisions log, next steps |
-| [docs/Study-Guide.md](docs/Study-Guide.md) | **What to study to fully understand and own this project**: 8 tracks, exercises, self-checks, 16-week plan |
 | [data/README.md](data/README.md) | Which datasets to collect and the file format |
-| [docs/research/](docs/research/) | Audit of the original code; corrected paper outline |
+| [docs/research/](docs/research/) | Pre-registered plan of the physics-informed test, the script that ran it, and the bibliography |
 
 ## Project history
 
-The original research scripts are preserved in [`legacy/`](legacy/). They contained
-critical bugs; see [docs/research/audit-2026-09.md](docs/research/audit-2026-09.md). **Do
-not cite results from the legacy files.**
+An earlier prototype of this project had critical bugs (an untrained network that produced NaNs, failures
+masked in the metrics, and an LLM whose output never reached the controller). It was rebuilt from scratch in
+September 2026 and is not part of this repository; no result from it is used.

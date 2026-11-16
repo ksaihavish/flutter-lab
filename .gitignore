@@ -29,3 +29,21 @@ docs/research/paper-draft.pdf
 docs/research/ieee/
 docs/research/paper-ieee-overleaf.zip
 docs/research/paper-ieee.pdf
+docs/research/springer/
+docs/research/paper-springer-overleaf.zip
+docs/research/paper-springer.pdf
+
+# Private working files: kept on the owner's machine, never published (owner's decision, 2026-11-16)
+CLAUDE.md
+legacy/
+docs/Memory.md
+docs/Study-Guide.md
+docs/Phases.md
+docs/research/paper-draft.md
+docs/research/paper-outline.md
+docs/research/submission-checklist.md
+docs/research/cover-letter.md
+docs/research/figures/
+docs/research/audit-2026-09.md
+docs/research/fault-tolerant-plan.md
+docs/research/related-work.md
